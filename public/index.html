@@ -1,82 +1,227 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 
 <head>
-    <title>File Upload with Themed Speed Graph on Canvas</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>🚀 Live File Sharing</title>
     <style>
+        /* Modern color scheme */
+        :root {
+            --primary-color: #007bff;
+            --secondary-color: #6c757d;
+            --background-color: #f8f9fa;
+            --text-color: #212529;
+            --border-color: #dee2e6;
+            --success-color: #28a745;
+            --error-color: #dc3545;
+        }
+
         body {
-            font-family: Arial, sans-serif;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--background-color);
+            color: var(--text-color);
             display: flex;
             flex-direction: column;
             align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
             padding: 20px;
         }
 
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 20px;
+            color: var(--primary-color);
+            animation: fadeIn 1s ease-in-out;
+        }
+
         .drop-zone {
-            width: 400px;
+            width: 100%;
+            max-width: 500px;
             height: 200px;
-            border: 2px dashed #ccc;
+            border: 2px dashed var(--border-color);
             border-radius: 10px;
             display: flex;
             align-items: center;
             justify-content: center;
-            margin: 20px;
-            transition: all 0.3s;
+            text-align: center;
+            font-size: 1.2rem;
+            color: var(--secondary-color);
+            transition: all 0.3s ease;
+            background-color: white;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            animation: slideIn 0.5s ease-in-out;
         }
 
         .drop-zone.dragover {
-            border-color: #007bff;
-            background-color: #f0f8ff;
+            border-color: var(--primary-color);
+            background-color: rgba(0, 123, 255, 0.1);
+            box-shadow: 0 4px 6px rgba(0, 123, 255, 0.2);
         }
 
         #downloadSection {
             margin-top: 20px;
             display: none;
+            width: 100%;
+            max-width: 500px;
+            text-align: center;
+            animation: fadeIn 1s ease-in-out;
         }
 
-        input {
-            width: 400px;
-            padding: 8px;
+        #transferSpeed {
+            font-size: 1.1rem;
             margin-bottom: 10px;
+            color: var(--primary-color);
+        }
+
+        .button-group {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
         }
 
         button {
             padding: 10px 20px;
-            background: #007bff;
+            background: var(--primary-color);
             color: white;
             border: none;
             border-radius: 5px;
             cursor: pointer;
+            font-size: 1rem;
+            transition: all 0.3s ease;
+        }
+
+        button:hover {
+            background: #0056b3;
+            transform: translateY(-2px);
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+
+        button:active {
+            transform: translateY(0);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
         }
 
         #graphContainer {
-            width: 600px;
-            max-width: 90%;
+            width: 100%;
+            max-width: 800px;
             margin-top: 20px;
+            animation: fadeIn 1s ease-in-out;
         }
 
         canvas {
             width: 100%;
             height: 300px;
-            border: 1px solid #ccc;
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            background-color: white;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Popup Modal */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            z-index: 1000;
+            text-align: center;
+        }
+
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 999;
+        }
+
+        .modal.show, .modal-overlay.show {
+            display: block;
+        }
+
+        /* Animations */
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+            }
+            to {
+                opacity: 1;
+            }
+        }
+
+        @keyframes slideIn {
+            from {
+                transform: translateY(-20px);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        @keyframes titleAnimation {
+            0% { opacity: 0; transform: translateY(-10px); }
+            50% { opacity: 1; transform: translateY(0); }
+            100% { opacity: 0; transform: translateY(10px); }
+        }
+
+        /* Responsive design */
+        @media (max-width: 768px) {
+            h1 {
+                font-size: 2rem;
+            }
+
+            .drop-zone {
+                height: 150px;
+                font-size: 1rem;
+            }
+
+            #transferSpeed {
+                font-size: 1rem;
+            }
+
+            button {
+                font-size: 0.9rem;
+            }
         }
     </style>
 </head>
 
 <body>
-    <h1>Drag & Drop File Upload</h1>
+    <h1>🚀 Live File Sharing</h1>
+    <p>✨ Share files instantly without fully uploading them! Just drag and drop your file below to start.</p>
     <div class="drop-zone" id="dropZone">
-        Drag your file here
+        📂 Drag your file here
     </div>
     <div id="downloadSection">
-        <div id="transferSpeed">Transfer Speed: 0 KB/s</div>
-        <a id="downloadUrlA" href=""></a>
-        <input type="text" id="downloadUrl" readonly>
-        <button onclick="copyUrl()">Copy URL</button>
+        <div id="transferSpeed">⚡ Transfer Speed: 0 KB/s</div>
+        <div class="button-group">
+            <button onclick="copyUrl()">📋 Copy Link</button>
+            <button onclick="openLinkInNewTab()">🌐 Open in New Tab</button>
+        </div>
     </div>
 
     <div id="graphContainer">
         <canvas id="speedCanvas"></canvas>
+    </div>
+
+    <!-- Popup Modal -->
+    <div class="modal-overlay" id="modalOverlay"></div>
+    <div class="modal" id="modal">
+        <p id="modalMessage"></p>
+        <button onclick="closeModal()">Close</button>
     </div>
 
     <script>
@@ -90,6 +235,7 @@
         let lastUpdateTime = null;
         let lastBytesSent = 0;
         let speedSamples = []; // Array to hold {time: <seconds>, speed: <KB/s>}
+        let downloadLink = ""; // Variable to store the download link
 
         // Set theme colors based on device theme (light/dark)
         function getThemeColors() {
@@ -187,7 +333,7 @@
                 const deltaBytes = totalBytesSent - lastBytesSent;
                 const speedKbps = (deltaBytes / 1024) / deltaTime; // instantaneous speed in KB/s
 
-                document.getElementById('transferSpeed').textContent = `Transfer Speed: ${speedKbps.toFixed(2)} KB/s`;
+                document.getElementById('transferSpeed').textContent = `⚡ Transfer Speed: ${speedKbps.toFixed(2)} KB/s`;
 
                 // Record speed sample and trim old samples
                 speedSamples.push({ time: elapsedTotal, speed: speedKbps });
@@ -204,8 +350,6 @@
         // DOM elements for file upload and transfer
         const dropZone = document.getElementById('dropZone');
         const downloadSection = document.getElementById('downloadSection');
-        const downloadUrl = document.getElementById('downloadUrl');
-        const downloadUrlA = document.getElementById('downloadUrlA');
 
         dropZone.addEventListener('dragover', (e) => {
             e.preventDefault();
@@ -221,6 +365,9 @@
             dropZone.classList.remove('dragover');
             const file = e.dataTransfer.files[0];
             if (!file) return;
+
+            // Animate the title to show the filename
+            animateTitle(`📄 ${file.name} - Live File Sharing`);
 
             // Open WebSocket connection
             const ws = new WebSocket(`${location.protocol.includes('s') ? 'wss' : 'ws'}://${location.hostname}`);
@@ -251,9 +398,7 @@
                 if (typeof event.data === 'string') {
                     const data = JSON.parse(event.data);
                     if (data.downloadLink) {
-                        downloadUrl.value = data.downloadLink;
-                        downloadUrlA.href = data.downloadLink;
-                        downloadUrlA.innerHTML = data.downloadLink;
+                        downloadLink = data.downloadLink;
                         downloadSection.style.display = 'block';
                     } else {
                         const reader = new FileReader();
@@ -276,9 +421,41 @@
             };
         });
 
+        const originalTitle = document.title;
+        // Animate the title to show the filename
+        function animateTitle(newTitle) {
+            let interval = setInterval(() => {
+                document.title = document.title === newTitle ? originalTitle : newTitle;
+            }, 1000);
+            setTimeout(() => {
+                clearInterval(interval);
+                document.title = originalTitle;
+            }, 5000);
+        }
+
+        // Popup Modal Functions
+        function showModal(message) {
+            document.getElementById('modalMessage').innerHTML = message;
+            document.getElementById('modal').classList.add('show');
+            document.getElementById('modalOverlay').classList.add('show');
+        }
+
+        function closeModal() {
+            document.getElementById('modal').classList.remove('show');
+            document.getElementById('modalOverlay').classList.remove('show');
+        }
+
         function copyUrl() {
-            downloadUrl.select();
-            document.execCommand('copy');
+            const link = new URL(downloadLink, document.baseURI).href;
+            navigator.clipboard.writeText(link).then(() => {
+                showModal(`✅ Link copied to clipboard!\n<a href="${link}">${decodeURI(link)}</a>`);
+            }).catch(() => {
+                showModal(`❌ Failed to copy link.\n<a href="${link}">${decodeURI(link)}</a>`);
+            });
+        }
+
+        function openLinkInNewTab() {
+            window.open(downloadLink, '_blank');
         }
     </script>
 </body>
