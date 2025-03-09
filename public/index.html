@@ -2,7 +2,7 @@
 <html>
 
 <head>
-    <title>File Upload</title>
+    <title>File Upload with Themed Speed Graph on Canvas</title>
     <style>
         body {
             font-family: Arial, sans-serif;
@@ -10,12 +10,6 @@
             flex-direction: column;
             align-items: center;
             padding: 20px;
-            background-color: #f9f9f9;
-        }
-
-        h1 {
-            color: #333;
-            margin-bottom: 20px;
         }
 
         .drop-zone {
@@ -28,8 +22,6 @@
             justify-content: center;
             margin: 20px;
             transition: all 0.3s;
-            background-color: #fff;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         }
 
         .drop-zone.dragover {
@@ -40,15 +32,12 @@
         #downloadSection {
             margin-top: 20px;
             display: none;
-            text-align: center;
         }
 
         input {
             width: 400px;
             padding: 8px;
             margin-bottom: 10px;
-            border: 1px solid #ccc;
-            border-radius: 5px;
         }
 
         button {
@@ -58,42 +47,18 @@
             border: none;
             border-radius: 5px;
             cursor: pointer;
-            transition: background 0.3s;
         }
 
-        button:hover {
-            background: #0056b3;
+        #graphContainer {
+            width: 600px;
+            max-width: 90%;
+            margin-top: 20px;
         }
 
         canvas {
-            margin-top: 20px;
+            width: 100%;
+            height: 300px;
             border: 1px solid #ccc;
-            background-color: #fff;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-        }
-
-        .progress-bar {
-            width: 400px;
-            height: 10px;
-            background-color: #e0e0e0;
-            border-radius: 5px;
-            margin-top: 20px;
-            overflow: hidden;
-            display: none;
-        }
-
-        .progress-bar-inner {
-            height: 100%;
-            background-color: #007bff;
-            width: 0;
-            transition: width 0.3s;
-        }
-
-        .success-message {
-            margin-top: 20px;
-            color: #28a745;
-            font-weight: bold;
-            display: none;
         }
     </style>
 </head>
@@ -103,28 +68,144 @@
     <div class="drop-zone" id="dropZone">
         Drag your file here
     </div>
-    <div class="progress-bar" id="progressBar">
-        <div class="progress-bar-inner" id="progressBarInner"></div>
-    </div>
     <div id="downloadSection">
+        <div id="transferSpeed">Transfer Speed: 0 KB/s</div>
         <a id="downloadUrlA" href=""></a>
         <input type="text" id="downloadUrl" readonly>
         <button onclick="copyUrl()">Copy URL</button>
     </div>
-    <div class="success-message" id="successMessage">File uploaded successfully!</div>
-    <!-- Canvas for the speed graph -->
-    <canvas id="speedGraph" width="400" height="200"></canvas>
+
+    <div id="graphContainer">
+        <canvas id="speedCanvas"></canvas>
+    </div>
 
     <script>
+        // CONFIGURABLE VARIABLES:
+        const graphTimeWindow = 30; // seconds of data to display in the graph
+        const graphUpdateInterval = 500; // interval in milliseconds to update speed and graph
+
+        // Global variables for tracking transfer and speed data:
+        let totalBytesSent = 0;
+        let startTime = null;
+        let lastUpdateTime = null;
+        let lastBytesSent = 0;
+        let speedSamples = []; // Array to hold {time: <seconds>, speed: <KB/s>}
+
+        // Set theme colors based on device theme (light/dark)
+        function getThemeColors() {
+            const isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+            return isDark
+                ? { backgroundColor: "#333", gridColor: "#555", textColor: "#ccc", lineColor: "#0af" }
+                : { backgroundColor: "#fff", gridColor: "#eee", textColor: "#666", lineColor: "#007bff" };
+        }
+
+        // Canvas setup with device pixel ratio scaling:
+        const canvas = document.getElementById('speedCanvas');
+        const ctx = canvas.getContext('2d');
+
+        function resizeCanvas() {
+            const dpr = window.devicePixelRatio || 1;
+            const rect = canvas.getBoundingClientRect();
+            canvas.width = rect.width * dpr;
+            canvas.height = rect.height * dpr;
+            ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // Draw the speed graph on the canvas
+        function drawGraph() {
+            const { backgroundColor, gridColor, textColor, lineColor } = getThemeColors();
+            // Clear canvas and fill background
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.fillStyle = backgroundColor;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            // Draw border
+            ctx.strokeStyle = gridColor;
+            ctx.lineWidth = 1;
+            ctx.strokeRect(0, 0, canvas.width, canvas.height);
+
+            if (!startTime) return;
+
+            const now = performance.now();
+            const elapsedTotal = (now - startTime) / 1000; // seconds since start
+            const xStart = elapsedTotal - graphTimeWindow;
+
+            // Filter samples that fall within the current time window
+            const samples = speedSamples.filter(s => s.time >= xStart && s.time <= elapsedTotal);
+            if (samples.length === 0) return;
+
+            // Determine max speed for scaling (with a minimum value to avoid division by zero)
+            const maxSpeed = Math.max(Math.max(...samples.map(s => s.speed)), 10);
+
+            // Draw horizontal grid lines and labels
+            ctx.strokeStyle = gridColor;
+            ctx.lineWidth = 1;
+            const numHorizontalLines = 5;
+            for (let i = 0; i <= numHorizontalLines; i++) {
+                let y = canvas.height / window.devicePixelRatio - (i / numHorizontalLines) * (canvas.height / window.devicePixelRatio);
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(canvas.width / window.devicePixelRatio, y);
+                ctx.stroke();
+                // Label grid lines
+                ctx.fillStyle = textColor;
+                ctx.font = "10px Arial";
+                const speedLabel = ((maxSpeed * i) / numHorizontalLines).toFixed(1);
+                ctx.fillText(`${speedLabel} KB/s`, 2, y - 2);
+            }
+
+            // Draw x-axis time labels
+            ctx.fillStyle = textColor;
+            ctx.font = "10px Arial";
+            ctx.fillText(`${xStart.toFixed(1)}s`, 2, canvas.height / window.devicePixelRatio - 2);
+            ctx.fillText(`${elapsedTotal.toFixed(1)}s`, canvas.width / window.devicePixelRatio - 40, canvas.height / window.devicePixelRatio - 2);
+
+            // Plot the speed line graph
+            ctx.strokeStyle = lineColor;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            samples.forEach((sample, index) => {
+                const x = ((sample.time - xStart) / graphTimeWindow) * (canvas.width / window.devicePixelRatio);
+                const y = (canvas.height / window.devicePixelRatio) - ((sample.speed / maxSpeed) * (canvas.height / window.devicePixelRatio));
+                if (index === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            });
+            ctx.stroke();
+        }
+
+        // Update speed calculations and graph at fixed intervals
+        function updateSpeed() {
+            if (startTime) {
+                const now = performance.now();
+                const elapsedTotal = (now - startTime) / 1000;
+                const deltaTime = (now - lastUpdateTime) / 1000;
+                const deltaBytes = totalBytesSent - lastBytesSent;
+                const speedKbps = (deltaBytes / 1024) / deltaTime; // instantaneous speed in KB/s
+
+                document.getElementById('transferSpeed').textContent = `Transfer Speed: ${speedKbps.toFixed(2)} KB/s`;
+
+                // Record speed sample and trim old samples
+                speedSamples.push({ time: elapsedTotal, speed: speedKbps });
+                speedSamples = speedSamples.filter(sample => elapsedTotal - sample.time <= graphTimeWindow);
+
+                lastUpdateTime = now;
+                lastBytesSent = totalBytesSent;
+            }
+            drawGraph();
+        }
+
+        setInterval(updateSpeed, graphUpdateInterval);
+
+        // DOM elements for file upload and transfer
         const dropZone = document.getElementById('dropZone');
         const downloadSection = document.getElementById('downloadSection');
         const downloadUrl = document.getElementById('downloadUrl');
         const downloadUrlA = document.getElementById('downloadUrlA');
-        const speedGraph = document.getElementById('speedGraph');
-        const ctx = speedGraph.getContext('2d');
-        const progressBar = document.getElementById('progressBar');
-        const progressBarInner = document.getElementById('progressBarInner');
-        const successMessage = document.getElementById('successMessage');
 
         dropZone.addEventListener('dragover', (e) => {
             e.preventDefault();
@@ -135,76 +216,13 @@
             dropZone.classList.remove('dragover');
         });
 
-        let totalBytesSent = 0;
-        let lastUpdateTime = performance.now();
-        let lastBytesSent = 0;
-        let speedDataPoints = [];
-
-        setInterval(updateSpeedGraph, 500);
-
-        function updateSpeedGraph() {
-            const currentTime = performance.now();
-            const elapsedTime = (currentTime - lastUpdateTime) / 1000;
-            if (elapsedTime > 0) {
-                const bytesDelta = totalBytesSent - lastBytesSent;
-                const speedKbps = (bytesDelta / 1024) / elapsedTime;
-                speedDataPoints.push(speedKbps);
-                if (speedDataPoints.length > 60) {
-                    speedDataPoints.shift();
-                }
-                lastUpdateTime = currentTime;
-                lastBytesSent = totalBytesSent;
-            }
-            drawGraph();
-        }
-
-        function drawGraph() {
-            ctx.clearRect(0, 0, speedGraph.width, speedGraph.height);
-            const maxSpeed = Math.max(...speedDataPoints, 50);
-            const stepX = speedGraph.width / (speedDataPoints.length - 1 || 1);
-
-            // Draw grid lines
-            ctx.strokeStyle = '#eee';
-            ctx.lineWidth = 1;
-            for (let i = 0; i <= 10; i++) {
-                const y = speedGraph.height - (i / 10) * speedGraph.height;
-                ctx.beginPath();
-                ctx.moveTo(0, y);
-                ctx.lineTo(speedGraph.width, y);
-                ctx.stroke();
-            }
-
-            // Draw speed line
-            ctx.beginPath();
-            speedDataPoints.forEach((speed, index) => {
-                const x = index * stepX;
-                const y = speedGraph.height - (speed / maxSpeed) * speedGraph.height;
-                if (index === 0) {
-                    ctx.moveTo(x, y);
-                } else {
-                    ctx.lineTo(x, y);
-                }
-            });
-            ctx.strokeStyle = '#007bff';
-            ctx.lineWidth = 2;
-            ctx.stroke();
-
-            // Draw labels
-            ctx.fillStyle = '#333';
-            ctx.font = '10px Arial';
-            ctx.fillText('Speed (KB/s)', 10, 10);
-            ctx.fillText('Time', speedGraph.width - 30, speedGraph.height - 10);
-        }
-
         dropZone.addEventListener('drop', async (e) => {
             e.preventDefault();
             dropZone.classList.remove('dragover');
-            progressBar.style.display = 'block';
-            successMessage.style.display = 'none';
-
             const file = e.dataTransfer.files[0];
             if (!file) return;
 
+            // Open WebSocket connection
             const ws = new WebSocket(`${location.protocol.includes('s') ? 'wss' : 'ws'}://${location.hostname}`);
             const MessageType = {
                 INIT: 0,
@@ -224,6 +242,9 @@
                 buffer.set(jsonBytes, 8);
                 ws.send(buffer);
                 totalBytesSent += buffer.byteLength;
+                startTime = performance.now();
+                lastUpdateTime = startTime;
+                lastBytesSent = totalBytesSent;
             };
 
             ws.onmessage = async (event) => {
@@ -234,23 +255,18 @@
                         downloadUrlA.href = data.downloadLink;
                         downloadUrlA.innerHTML = data.downloadLink;
                         downloadSection.style.display = 'block';
-                        progressBar.style.display = 'none';
-                        successMessage.style.display = 'block';
                     } else {
                         const reader = new FileReader();
                         const chunk = data;
-
                         reader.onload = (e) => {
                             const buffer = new Uint8Array(e.target.result);
-                            const combined = new Uint8Array(16 + buffer.byteLength);
+                            const combined = new Uint8Array(8 + 8 + buffer.byteLength);
                             combined.set(new Uint8Array(new BigInt64Array([BigInt(MessageType.DATA)]).buffer), 0);
                             combined.set(new Uint8Array(new BigInt64Array([BigInt(chunk.chunkId)]).buffer), 8);
                             combined.set(buffer, 16);
                             ws.send(combined);
                             totalBytesSent += combined.byteLength;
-                            progressBarInner.style.width = `${(totalBytesSent / file.size) * 100}%`;
                         };
-
                         const blob = file.slice(chunk.rangeStart, chunk.rangeEnd === -1 ? undefined : chunk.rangeEnd + 1);
                         reader.readAsArrayBuffer(blob);
                     }
