@@ -10,6 +10,12 @@
             flex-direction: column;
             align-items: center;
             padding: 20px;
+            background-color: #f9f9f9;
+        }
+
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
         }
 
         .drop-zone {
@@ -22,6 +28,8 @@
             justify-content: center;
             margin: 20px;
             transition: all 0.3s;
+            background-color: #fff;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         }
 
         .drop-zone.dragover {
@@ -32,12 +40,15 @@
         #downloadSection {
             margin-top: 20px;
             display: none;
+            text-align: center;
         }
 
         input {
             width: 400px;
             padding: 8px;
             margin-bottom: 10px;
+            border: 1px solid #ccc;
+            border-radius: 5px;
         }
 
         button {
@@ -47,11 +58,42 @@
             border: none;
             border-radius: 5px;
             cursor: pointer;
+            transition: background 0.3s;
+        }
+
+        button:hover {
+            background: #0056b3;
         }
 
         canvas {
             margin-top: 20px;
             border: 1px solid #ccc;
+            background-color: #fff;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        .progress-bar {
+            width: 400px;
+            height: 10px;
+            background-color: #e0e0e0;
+            border-radius: 5px;
+            margin-top: 20px;
+            overflow: hidden;
+            display: none;
+        }
+
+        .progress-bar-inner {
+            height: 100%;
+            background-color: #007bff;
+            width: 0;
+            transition: width 0.3s;
+        }
+
+        .success-message {
+            margin-top: 20px;
+            color: #28a745;
+            font-weight: bold;
+            display: none;
         }
     </style>
 </head>
@@ -61,13 +103,17 @@
     <div class="drop-zone" id="dropZone">
         Drag your file here
     </div>
+    <div class="progress-bar" id="progressBar">
+        <div class="progress-bar-inner" id="progressBarInner"></div>
+    </div>
     <div id="downloadSection">
         <a id="downloadUrlA" href=""></a>
         <input type="text" id="downloadUrl" readonly>
         <button onclick="copyUrl()">Copy URL</button>
     </div>
+    <div class="success-message" id="successMessage">File uploaded successfully!</div>
     <!-- Canvas for the speed graph -->
-    <canvas id="speedGraph" width="400" height="150"></canvas>
+    <canvas id="speedGraph" width="400" height="200"></canvas>
 
     <script>
         const dropZone = document.getElementById('dropZone');
@@ -76,6 +122,9 @@
         const downloadUrlA = document.getElementById('downloadUrlA');
         const speedGraph = document.getElementById('speedGraph');
         const ctx = speedGraph.getContext('2d');
+        const progressBar = document.getElementById('progressBar');
+        const progressBarInner = document.getElementById('progressBarInner');
+        const successMessage = document.getElementById('successMessage');
 
         dropZone.addEventListener('dragover', (e) => {
             e.preventDefault();
@@ -87,24 +136,19 @@
         });
 
         let totalBytesSent = 0;
-        // Instead of a single startTime, we track the last update time and bytes sent at that moment
         let lastUpdateTime = performance.now();
         let lastBytesSent = 0;
-        // Array to store speed values (in KB/s) over time
         let speedDataPoints = [];
 
-        // Update speed graph every 500ms
         setInterval(updateSpeedGraph, 500);
 
         function updateSpeedGraph() {
             const currentTime = performance.now();
-            const elapsedTime = (currentTime - lastUpdateTime) / 1000; // seconds
+            const elapsedTime = (currentTime - lastUpdateTime) / 1000;
             if (elapsedTime > 0) {
                 const bytesDelta = totalBytesSent - lastBytesSent;
-                // Compute instantaneous speed in KB/s
                 const speedKbps = (bytesDelta / 1024) / elapsedTime;
                 speedDataPoints.push(speedKbps);
-                // Keep only the latest 60 data points
                 if (speedDataPoints.length > 60) {
                     speedDataPoints.shift();
                 }
@@ -116,14 +160,24 @@
 
         function drawGraph() {
             ctx.clearRect(0, 0, speedGraph.width, speedGraph.height);
-            // Determine the max value for scaling (default to 50 KB/s if all speeds are low)
             const maxSpeed = Math.max(...speedDataPoints, 50);
             const stepX = speedGraph.width / (speedDataPoints.length - 1 || 1);
 
+            // Draw grid lines
+            ctx.strokeStyle = '#eee';
+            ctx.lineWidth = 1;
+            for (let i = 0; i <= 10; i++) {
+                const y = speedGraph.height - (i / 10) * speedGraph.height;
+                ctx.beginPath();
+                ctx.moveTo(0, y);
+                ctx.lineTo(speedGraph.width, y);
+                ctx.stroke();
+            }
+
+            // Draw speed line
             ctx.beginPath();
             speedDataPoints.forEach((speed, index) => {
                 const x = index * stepX;
-                // Invert y so that higher speeds are drawn higher on the canvas
                 const y = speedGraph.height - (speed / maxSpeed) * speedGraph.height;
                 if (index === 0) {
                     ctx.moveTo(x, y);
@@ -135,18 +189,18 @@
             ctx.lineWidth = 2;
             ctx.stroke();
 
-            // Draw a horizontal grid line at the bottom (0 speed)
-            ctx.beginPath();
-            ctx.moveTo(0, speedGraph.height);
-            ctx.lineTo(speedGraph.width, speedGraph.height);
-            ctx.strokeStyle = '#ccc';
-            ctx.lineWidth = 1;
-            ctx.stroke();
+            // Draw labels
+            ctx.fillStyle = '#333';
+            ctx.font = '10px Arial';
+            ctx.fillText('Speed (KB/s)', 10, 10);
+            ctx.fillText('Time', speedGraph.width - 30, speedGraph.height - 10);
         }
 
         dropZone.addEventListener('drop', async (e) => {
             e.preventDefault();
             dropZone.classList.remove('dragover');
+            progressBar.style.display = 'block';
+            successMessage.style.display = 'none';
 
             const file = e.dataTransfer.files[0];
             if (!file) return;
@@ -180,6 +234,8 @@
                         downloadUrlA.href = data.downloadLink;
                         downloadUrlA.innerHTML = data.downloadLink;
                         downloadSection.style.display = 'block';
+                        progressBar.style.display = 'none';
+                        successMessage.style.display = 'block';
                     } else {
                         const reader = new FileReader();
                         const chunk = data;
@@ -192,6 +248,7 @@
                             combined.set(buffer, 16);
                             ws.send(combined);
                             totalBytesSent += combined.byteLength;
+                            progressBarInner.style.width = `${(totalBytesSent / file.size) * 100}%`;
                         };
 
                         const blob = file.slice(chunk.rangeStart, chunk.rangeEnd === -1 ? undefined : chunk.rangeEnd + 1);
