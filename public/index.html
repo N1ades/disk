@@ -10,11 +10,23 @@
         :root {
             --primary-color: #007bff;
             --secondary-color: #6c757d;
-            --background-color: #f8f9fa;
+            --background-color: #ffffff;
             --text-color: #212529;
             --border-color: #dee2e6;
             --success-color: #28a745;
             --error-color: #dc3545;
+            --card-bg: #ffffff;
+            --shadow-color: rgba(0, 0, 0, 0.1);
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --background-color: #121212;
+                --text-color: #e0e0e0;
+                --border-color: #373737;
+                --card-bg: #1e1e1e;
+                --shadow-color: rgba(255, 255, 255, 0.1);
+            }
         }
 
         body {
@@ -38,27 +50,53 @@
         }
 
         .drop-zone {
+            margin-top: 33px;
             width: 100%;
             max-width: 500px;
             height: 200px;
             border: 2px dashed var(--border-color);
-            border-radius: 10px;
+            border-radius: 16px;
             display: flex;
             align-items: center;
             justify-content: center;
             text-align: center;
             font-size: 1.2rem;
-            color: var(--secondary-color);
+            color: var(--text-color);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            background-color: var(--card-bg);
+            box-shadow: 0 4px 6px var(--shadow-color);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .drop-zone::before {
+            content: '';
+            position: absolute;
+            width: 40px;
+            height: 40px;
+            background: var(--primary-color);
+            opacity: 0.1;
+            border-radius: 50%;
+            filter: blur(20px);
             transition: all 0.3s ease;
-            background-color: white;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
-            animation: slideIn 0.5s ease-in-out;
         }
 
         .drop-zone.dragover {
             border-color: var(--primary-color);
-            background-color: rgba(0, 123, 255, 0.1);
-            box-shadow: 0 4px 6px rgba(0, 123, 255, 0.2);
+            transform: scale(1.02);
+        }
+
+        .drop-zone.dragover::before {
+            opacity: 0.2;
+            transform: scale(2);
+        }
+
+        .drop-zone-content {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 12px;
+            padding: 20px;
         }
 
         #downloadSection {
@@ -82,6 +120,7 @@
             justify-content: center;
         }
 
+        .button-group>*,
         button {
             padding: 10px 20px;
             background: var(--primary-color);
@@ -93,12 +132,14 @@
             transition: all 0.3s ease;
         }
 
+        .button-group>*:hover,
         button:hover {
             background: #0056b3;
             transform: translateY(-2px);
             box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
         }
 
+        .button-group>*:active,
         button:active {
             transform: translateY(0);
             box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
@@ -116,7 +157,7 @@
             height: 300px;
             border: 1px solid var(--border-color);
             border-radius: 10px;
-            background-color: white;
+            background-color: transparent;
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         }
 
@@ -135,6 +176,21 @@
             text-align: center;
         }
 
+        /* Enhanced modal */
+        .modal {
+            background: var(--card-bg);
+            border: 1px solid var(--border-color);
+            box-shadow: 0 8px 32px var(--shadow-color);
+            border-radius: 16px;
+            padding: 32px;
+            transform: translate(-50%, -50%) scale(0.9);
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        .modal.show {
+            transform: translate(-50%, -50%) scale(1);
+        }
+
         .modal-overlay {
             display: none;
             position: fixed;
@@ -146,7 +202,8 @@
             z-index: 999;
         }
 
-        .modal.show, .modal-overlay.show {
+        .modal.show,
+        .modal-overlay.show {
             display: block;
         }
 
@@ -155,6 +212,7 @@
             from {
                 opacity: 0;
             }
+
             to {
                 opacity: 1;
             }
@@ -165,6 +223,7 @@
                 transform: translateY(-20px);
                 opacity: 0;
             }
+
             to {
                 transform: translateY(0);
                 opacity: 1;
@@ -172,9 +231,20 @@
         }
 
         @keyframes titleAnimation {
-            0% { opacity: 0; transform: translateY(-10px); }
-            50% { opacity: 1; transform: translateY(0); }
-            100% { opacity: 0; transform: translateY(10px); }
+            0% {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+
+            50% {
+                opacity: 1;
+                transform: translateY(0);
+            }
+
+            100% {
+                opacity: 0;
+                transform: translateY(10px);
+            }
         }
 
         /* Responsive design */
@@ -197,6 +267,77 @@
             }
         }
     </style>
+
+    <style>
+        /* Add to :root variables */
+        :root {
+            --link-color: #007bff;
+            --link-hover: #0056b3;
+            --link-active: #003d80;
+            --link-visited: #6f42c1;
+        }
+
+        @media (prefers-color-scheme: dark) {
+            :root {
+                --link-color: #79b8ff;
+                --link-hover: #a6d1ff;
+                --link-active: #cfe6ff;
+                --link-visited: #b392f0;
+            }
+        }
+
+        a {
+            color: inherit;
+            text-decoration: none;
+
+        }
+
+        a:hover {
+            text-decoration: inherit;
+            color: inherit;
+        }
+
+        /* Link styles */
+        .a {
+            color: var(--link-color);
+            text-decoration: none;
+            transition: color 0.3s ease, transform 0.2s ease;
+            position: relative;
+        }
+
+        .a:hover {
+            color: var(--link-hover);
+            text-decoration: none;
+            text-underline-offset: 3px;
+        }
+
+        .a:active {
+            color: var(--link-active);
+            transform: scale(0.98);
+        }
+
+        .a:visited {
+            color: var(--link-color);
+        }
+
+        /* Optional animated underline */
+        .a::after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            left: 0;
+            width: 0%;
+            height: 1.5px;
+            background: var(--link-color);
+            transition: width 0.3s ease;
+        }
+
+        .a:hover::after {
+            width: 100%;
+        }
+    </style>
+
+
 </head>
 
 <body>
@@ -209,7 +350,7 @@
         <div id="transferSpeed">⚡ Transfer Speed: 0 KB/s</div>
         <div class="button-group">
             <button onclick="copyUrl()">📋 Copy Link</button>
-            <button onclick="openLinkInNewTab()">🌐 Open in New Tab</button>
+            <a id="openLinkInNewTab" href="" target="_blank">🌐 Open in New Tab</a>
         </div>
     </div>
 
@@ -241,7 +382,7 @@
         function getThemeColors() {
             const isDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
             return isDark
-                ? { backgroundColor: "#333", gridColor: "#555", textColor: "#ccc", lineColor: "#0af" }
+                ? { backgroundColor: "#1e1e1e", gridColor: "#555", textColor: "#ccc", lineColor: "#0af" }
                 : { backgroundColor: "#fff", gridColor: "#eee", textColor: "#666", lineColor: "#007bff" };
         }
 
@@ -401,6 +542,8 @@
                         downloadLink = data.downloadLink;
                         downloadSection.style.display = 'block';
                         dropZone.innerHTML = `📄 ${file.name} - Live`
+
+                        document.getElementById('openLinkInNewTab').href = data.downloadLink;
                     } else {
                         const reader = new FileReader();
                         const chunk = data;
@@ -449,9 +592,9 @@
         function copyUrl() {
             const link = new URL(downloadLink, document.baseURI).href;
             navigator.clipboard.writeText(link).then(() => {
-                showModal(`✅ Link copied to clipboard!\n<a href="${link}">${decodeURI(link)}</a>`);
+                showModal(`✅ Link copied to clipboard!\n<a class="a" href="${link}">${decodeURI(link)}</a>`);
             }).catch(() => {
-                showModal(`❌ Failed to copy link.\n<a href="${link}">${decodeURI(link)}</a>`);
+                showModal(`❌ Failed to copy link.\n<a class="a" href="${link}">${decodeURI(link)}</a>`);
             });
         }
 
@@ -459,6 +602,7 @@
             window.open(downloadLink, '_blank');
         }
     </script>
+
 </body>
 
 </html>
