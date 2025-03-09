@@ -48,6 +48,11 @@
             border-radius: 5px;
             cursor: pointer;
         }
+
+        canvas {
+            margin-top: 20px;
+            border: 1px solid #ccc;
+        }
     </style>
 </head>
 
@@ -61,13 +66,16 @@
         <input type="text" id="downloadUrl" readonly>
         <button onclick="copyUrl()">Copy URL</button>
     </div>
+    <!-- Canvas for the speed graph -->
+    <canvas id="speedGraph" width="400" height="150"></canvas>
 
     <script>
         const dropZone = document.getElementById('dropZone');
         const downloadSection = document.getElementById('downloadSection');
         const downloadUrl = document.getElementById('downloadUrl');
         const downloadUrlA = document.getElementById('downloadUrlA');
-        
+        const speedGraph = document.getElementById('speedGraph');
+        const ctx = speedGraph.getContext('2d');
 
         dropZone.addEventListener('dragover', (e) => {
             e.preventDefault();
@@ -77,6 +85,64 @@
         dropZone.addEventListener('dragleave', () => {
             dropZone.classList.remove('dragover');
         });
+
+        let totalBytesSent = 0;
+        // Instead of a single startTime, we track the last update time and bytes sent at that moment
+        let lastUpdateTime = performance.now();
+        let lastBytesSent = 0;
+        // Array to store speed values (in KB/s) over time
+        let speedDataPoints = [];
+
+        // Update speed graph every 500ms
+        setInterval(updateSpeedGraph, 500);
+
+        function updateSpeedGraph() {
+            const currentTime = performance.now();
+            const elapsedTime = (currentTime - lastUpdateTime) / 1000; // seconds
+            if (elapsedTime > 0) {
+                const bytesDelta = totalBytesSent - lastBytesSent;
+                // Compute instantaneous speed in KB/s
+                const speedKbps = (bytesDelta / 1024) / elapsedTime;
+                speedDataPoints.push(speedKbps);
+                // Keep only the latest 60 data points
+                if (speedDataPoints.length > 60) {
+                    speedDataPoints.shift();
+                }
+                lastUpdateTime = currentTime;
+                lastBytesSent = totalBytesSent;
+            }
+            drawGraph();
+        }
+
+        function drawGraph() {
+            ctx.clearRect(0, 0, speedGraph.width, speedGraph.height);
+            // Determine the max value for scaling (default to 50 KB/s if all speeds are low)
+            const maxSpeed = Math.max(...speedDataPoints, 50);
+            const stepX = speedGraph.width / (speedDataPoints.length - 1 || 1);
+
+            ctx.beginPath();
+            speedDataPoints.forEach((speed, index) => {
+                const x = index * stepX;
+                // Invert y so that higher speeds are drawn higher on the canvas
+                const y = speedGraph.height - (speed / maxSpeed) * speedGraph.height;
+                if (index === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            });
+            ctx.strokeStyle = '#007bff';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Draw a horizontal grid line at the bottom (0 speed)
+            ctx.beginPath();
+            ctx.moveTo(0, speedGraph.height);
+            ctx.lineTo(speedGraph.width, speedGraph.height);
+            ctx.strokeStyle = '#ccc';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+        }
 
         dropZone.addEventListener('drop', async (e) => {
             e.preventDefault();
@@ -90,32 +156,21 @@
                 INIT: 0,
                 DATA: 1,
                 REQUEST: 2
-            }
+            };
 
             ws.onopen = () => {
-                // Create JSON payload
                 const jsonPayload = JSON.stringify({
                     size: file.size,
                     filename: file.name
                 });
-
-                // Convert JSON to bytes using TextEncoder
                 const encoder = new TextEncoder();
                 const jsonBytes = encoder.encode(jsonPayload);
-
-                // Create buffer with 8 zero bytes + JSON bytes
                 const buffer = new Uint8Array(8 + jsonBytes.length);
-
                 buffer.set(new Uint8Array(new BigInt64Array([BigInt(MessageType.INIT)]).buffer), 0);
-
-                // Fill first 8 bytes with zeros (already initialized to 0)
-                buffer.set(jsonBytes, 8); // Add JSON bytes after the 8 zeros
-
-                // Send the binary buffer
+                buffer.set(jsonBytes, 8);
                 ws.send(buffer);
+                totalBytesSent += buffer.byteLength;
             };
-
-
 
             ws.onmessage = async (event) => {
                 if (typeof event.data === 'string') {
@@ -131,22 +186,19 @@
 
                         reader.onload = (e) => {
                             const buffer = new Uint8Array(e.target.result);
-
-                            const combined = new Uint8Array(8 + 8 + buffer.byteLength);
+                            const combined = new Uint8Array(16 + buffer.byteLength);
                             combined.set(new Uint8Array(new BigInt64Array([BigInt(MessageType.DATA)]).buffer), 0);
                             combined.set(new Uint8Array(new BigInt64Array([BigInt(chunk.chunkId)]).buffer), 8);
                             combined.set(buffer, 16);
-
                             ws.send(combined);
+                            totalBytesSent += combined.byteLength;
                         };
 
-                        const blob = file.slice(chunk.rangeStart,
-                            chunk.rangeEnd === -1 ? undefined : chunk.rangeEnd + 1);
+                        const blob = file.slice(chunk.rangeStart, chunk.rangeEnd === -1 ? undefined : chunk.rangeEnd + 1);
                         reader.readAsArrayBuffer(blob);
                     }
                 } else {
                     console.error('unsupported messageType');
-
                 }
             };
         });

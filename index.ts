@@ -221,10 +221,15 @@ app.get('/files/:filename', async (req, res: ServerResponse) => {
     const chunkSize = 2 * 1024 * 1024; // 2MB
     let current = start;
 
-    while (current <= end && res.writable) {
+    while (current <= end) {
       const next = Math.min(current + chunkSize - 1, end);
       const chunk = await file.read(current, next);
-      res.write(chunk);
+      
+      if (!res.write(chunk)) {
+        // Wait for the 'drain' event before continuing
+        await new Promise(resolve => res.once('drain', resolve));
+      }
+      
       current = next + 1;
       await new Promise(resolve => setTimeout(resolve, 5)); // Wait 5ms before next read
     }
