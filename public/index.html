@@ -150,6 +150,7 @@
             max-width: 800px;
             margin-top: 20px;
             animation: fadeIn 1s ease-in-out;
+            display: none;
         }
 
         canvas {
@@ -336,7 +337,72 @@
             width: 100%;
         }
     </style>
+    <!-- Add this CSS to the existing style section -->
+    <style>
+        .how-it-works {
+            margin: 2rem 0;
+            padding: 2rem;
+            background: var(--card-bg);
+            border-radius: 16px;
+            width: 100%;
+            max-width: 800px;
+            box-shadow: 0 4px 6px var(--shadow-color);
+            border: 1px solid var(--border-color);
+        }
 
+        .how-it-works h2 {
+            color: var(--primary-color);
+            text-align: center;
+            margin-bottom: 2rem;
+            font-size: 1.8rem;
+        }
+
+        .steps {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 2rem;
+            padding: 1rem;
+        }
+
+        .step {
+            text-align: center;
+            padding: 1.5rem;
+            background: var(--background-color);
+            border-radius: 12px;
+            transition: transform 0.3s ease;
+        }
+
+        .step:hover {
+            transform: translateY(-5px);
+        }
+
+        .step-icon {
+            font-size: 2.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .step h3 {
+            color: var(--primary-color);
+            margin-bottom: 0.5rem;
+            font-size: 1.2rem;
+        }
+
+        .step p {
+            color: var(--text-color);
+            font-size: 0.95rem;
+            line-height: 1.5;
+        }
+
+        @media (max-width: 768px) {
+            .how-it-works {
+                padding: 1rem;
+            }
+
+            .steps {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
 
 </head>
 
@@ -357,7 +423,31 @@
     <div id="graphContainer">
         <canvas id="speedCanvas"></canvas>
     </div>
-
+    <div class="how-it-works" id="how-it-works">
+        <h2>🔧 How It Works</h2>
+        <div class="steps">
+            <div class="step">
+                <div class="step-icon">🔄</div>
+                <h3>1. Instant Transfer</h3>
+                <p>Files begin transferring immediately as you select them, using WebSocket connections for real-time
+                    data
+                    streaming.</p>
+            </div>
+            <div class="step">
+                <div class="step-icon">⚡</div>
+                <h3>2. Progressive Upload</h3>
+                <p>Your file is sent in chunks while simultaneously being made available for download, eliminating wait
+                    times.</p>
+            </div>
+            <div class="step">
+                <div class="step-icon">🌐</div>
+                <h3>3. Share Instantly</h3>
+                <p>Get a shareable link immediately after dropping your file. Recipients can start downloading before
+                    upload
+                    completes!</p>
+            </div>
+        </div>
+    </div>
     <!-- Popup Modal -->
     <div class="modal-overlay" id="modalOverlay"></div>
     <div class="modal" id="modal">
@@ -387,8 +477,10 @@
         }
 
         // Canvas setup with device pixel ratio scaling:
+        const graphContainer = document.getElementById('graphContainer');
         const canvas = document.getElementById('speedCanvas');
         const ctx = canvas.getContext('2d');
+        const howItWorks= document.getElementById('how-it-works');
 
         function resizeCanvas() {
             const dpr = window.devicePixelRatio || 1;
@@ -542,6 +634,8 @@
                         downloadLink = data.downloadLink;
                         downloadSection.style.display = 'block';
                         dropZone.innerHTML = `📄 ${file.name} - Live`
+                        graphContainer.style.display = 'block';
+                        howItWorks.style.display = 'none';
 
                         document.getElementById('openLinkInNewTab').href = data.downloadLink;
                     } else {

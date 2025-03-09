@@ -1,8 +1,8 @@
 
 import express from 'express';
-
 import { ServerResponse } from 'http';
 import fs from 'fs';
+import morgan from 'morgan';
 import path from 'path';
 import mime from 'mime-types';
 import { createServer } from './ssl.ts'
@@ -73,12 +73,14 @@ const filesMap = new Map<string, FileObject>();
 
 // Создаем директории при необходимости
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+
+app.use(morgan(':date :remote-addr - :remote-user [:date[clf]] ":method :url HTTP/:http-version" :status :res[content-length] ":referrer" ":user-agent :res[header] :req[header] :response-time ms"'));
+
 app.use(express.static('public'));
 
 
 // WebSocket обработчик
 wss.on('connection', (ws) => {
-
   ws.on('message', async (message) => {
     // console.log(message);
     const MessageType = {
@@ -159,7 +161,7 @@ app.get('/files/:filename', async (req, res: ServerResponse) => {
     const fileSize = file.size;
     let range = req.headers.range;
 
-    console.log(req.headers);
+    console.log(new Date(), req.headers);
 
 
 
@@ -224,12 +226,12 @@ app.get('/files/:filename', async (req, res: ServerResponse) => {
     while (current <= end) {
       const next = Math.min(current + chunkSize - 1, end);
       const chunk = await file.read(current, next);
-      
+
       if (!res.write(chunk)) {
         // Wait for the 'drain' event before continuing
         await new Promise(resolve => res.once('drain', resolve));
       }
-      
+
       current = next + 1;
       await new Promise(resolve => setTimeout(resolve, 5)); // Wait 5ms before next read
     }
