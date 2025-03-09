@@ -1,137 +1,242 @@
+
 import express from 'express';
-import multer from 'multer';
-import fs from 'fs/promises';
-import { readFileSync, createWriteStream, existsSync, mkdirSync  } from 'fs';
+
+import { ServerResponse } from 'http';
+import fs from 'fs';
 import path from 'path';
-import cors from 'cors';
-import { statfs } from 'fs/promises';
-import https from 'https';
+import mime from 'mime-types';
+import { createServer } from './ssl.ts'
 
-const app = express();
-const PORT = process.env.PORT || 3000;
-const HOST = process.env.HOST || '127.0.0.1';
-const UPLOAD_DIR = process.env.UPLOAD_DIR || './uploads';
-const MAX_FILE_SIZE_MB = parseInt(process.env.MAX_FILE_SIZE_MB || '500');
-const MAX_FILE_SIZE = MAX_FILE_SIZE_MB * 1024 * 1024;
-// Добавьте в конфигурацию
-const CHUNK_DIR = path.join(UPLOAD_DIR, '.chunks');
-const CHUNK_SIZE = 5 * 1024 * 1024; // 5MB
+const __dirname = import.meta.dirname;
+const { wss, app } = createServer();
+//  // Используем один сервер для HTTP и WS
 
-// Создайте директории
-[UPLOAD_DIR, CHUNK_DIR].forEach(dir => {
-  if (!existsSync(dir)) mkdirSync(dir, { recursive: true });
-});
-
-
-// Middleware
-app.use(cors());
-app.use(express.static('public'));
-app.use('/files', express.static(UPLOAD_DIR));
-app.use(express.json({ limit: `${MAX_FILE_SIZE_MB}mb` }));
-app.use(express.urlencoded({ extended: true, limit: `${MAX_FILE_SIZE_MB}mb` }));
-
-// Ensure upload directory exists
-fs.mkdir(UPLOAD_DIR, { recursive: true });
+const uploadsDir = path.join(__dirname, 'uploads');
 
 
 
+class ChunkManager {
+  chunkId = 0;
+  chunksMap = new Map<number, any>();
 
-// Multer configuration
-const storage = multer.diskStorage({
-  destination: UPLOAD_DIR,
-  filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
-    cb(null, uniqueSuffix + '-' + file.originalname);
+  createChunk = (cb) => {
+    const chunkId = this.chunkId++;
+    this.chunksMap.set(chunkId, cb);
+    // console.log('createChunk', chunkId);
+    return { chunkId };
   }
+
+  setData = (chunkId, data) => {
+    // console.log('setData', chunkId);
+
+    this.chunksMap.get(chunkId)(data);
+    this.chunksMap.delete(chunkId);
+  }
+
+}
+const chunkManager = new ChunkManager()
+
+class FileObject {
+  indexBufferMB: number[];
+  getWs: any;
+  filename: string;
+  size: number;
+
+  constructor(filename, size, getWs) {
+    this.size = size
+    this.filename = filename
+    this.getWs = getWs;
+    this.indexBufferMB = []
+  }
+
+  write = (chunkId, data) => {
+    chunkManager.setData(chunkId, data)
+  }
+
+  read = (rangeStart: number, rangeEnd: number) => {
+
+    return new Promise<void>((resolve, reject) => {
+      const { chunkId } = chunkManager.createChunk(resolve);
+
+      this.getWs().send(JSON.stringify({
+        filename: this.filename,
+        chunkId,
+        rangeStart,
+        rangeEnd
+      }));
+    })
+  }
+
+}
+
+const filesMap = new Map<string, FileObject>();
+
+// Создаем директории при необходимости
+if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+app.use(express.static('public'));
+
+
+// WebSocket обработчик
+wss.on('connection', (ws) => {
+
+  ws.on('message', async (message) => {
+    // console.log(message);
+    const MessageType = {
+      INIT: 0,
+      DATA: 1
+    }
+
+    const messageType = Number(message.readBigInt64LE(0));
+
+    // console.log({ messageType });
+
+    if (messageType === MessageType.INIT) {
+      // Получение метаданных
+      const data = message.slice(8);
+      const { size, filename } = JSON.parse(data.toString('utf8'));
+
+      // console.log({ size, filename });
+
+      ws.send(JSON.stringify({
+        downloadLink: `/files/${encodeURIComponent(filename)}`
+      }));
+
+      filesMap.set(filename, new FileObject(filename, size, () => ws)) // min chunk is 1mb index Buffer stores states of those chunks
+
+    }
+    if (messageType === MessageType.DATA) {
+      // Обработка бинарных данных
+      const chunkId = Number(message.readBigInt64LE(8));
+      const data = message.slice(16);
+
+      chunkManager.setData(chunkId, data);
+
+    }
+  });
 });
 
-const upload = multer({
-  storage,
-  limits: { fileSize: MAX_FILE_SIZE },
-  fileFilter: (req, file, cb) => {
-    cb(null, true);
-    return;
-    if (file.mimetype.startsWith('video/')) {
-      cb(null, true);
+// HTTP endpoint для скачивания
+app.get('/download', (req, res) => {
+  const { filename, rangeStart, rangeEnd } = req.query;
+  const filePath = path.join(uploadsDir, filename);
+
+  if (!fs.existsSync(filePath)) return res.status(404).send('File not found');
+
+  const stats = fs.statSync(filePath);
+  const fileSize = stats.size;
+  const start = parseInt(rangeStart, 10) || 0;
+  const end = rangeEnd === '-1' ? fileSize - 1 : Math.min(parseInt(rangeEnd, 10), fileSize - 1);
+
+  res.writeHead(200, {
+    'Content-Type': 'application/octet-stream',
+    'Content-Disposition': `attachment; filename="${filename}"`,
+    'Content-Length': end - start + 1,
+    'Content-Range': `bytes ${start}-${end}/${fileSize}`
+  });
+
+  fs.createReadStream(filePath, { start, end }).pipe(res);
+});
+
+class NotFoundError extends Error {
+  code = 'ENOENT'
+}
+
+app.get('/files/:filename', async (req, res: ServerResponse) => {
+  try {
+    const filename = req.params.filename;
+    // console.log(filename);
+
+    if (!filesMap.has(filename)) {
+      throw new NotFoundError()
+    }
+    const file = filesMap.get(filename) as FileObject
+
+    // const filePath = path.join(__dirname, 'uploads', filename);
+
+    // Get file stats
+    // const stats = await fs.promises.stat(filePath);
+    // const fileSize = stats.size;
+    const fileSize = file.size;
+    let range = req.headers.range;
+
+    console.log(req.headers);
+
+
+
+    // Determine Content-Type
+    const contentType = mime.lookup(filename) || 'application/octet-stream';
+
+    // if (!range) {
+    //   // Send full file if no range header
+    //   res.writeHead(200, {
+    //     'Content-Type': contentType,
+    //     'Content-Length': fileSize,
+    //     'Accept-Ranges': 'bytes'
+    //   });
+
+    //   res.write(await file.read(0, -1))
+    //   return res.end();
+    // }
+
+    // Parse Range header (bytes=start-end)
+    // console.log({range});
+    let start, end;
+
+    if (range) {
+      const [startStr, endStr] = range.replace(/bytes=/, '').split('-');
+      start = parseInt(startStr, 10);
+      end = endStr ? parseInt(endStr, 10) : fileSize - 1;
+    }
+    else {
+      start = 0;
+      end = fileSize - 1;
+    }
+
+    // Validate range
+    if (start > end || end >= fileSize) {
+      res.writeHead(416, {
+        'Content-Range': `bytes */${fileSize}`
+      });
+      return res.end();
+    }
+
+    // const MAX_CHUNK_SIZE = 1000000;
+    // end = Math.min(end, fileSize - 1, start + MAX_CHUNK_SIZE);
+
+    // Adjust end if out of bounds
+    end = Math.min(end, fileSize - 1);
+
+    const contentLength = end - start + 1;
+
+    // Send partial content
+    res.writeHead(206, {
+      'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+      'Content-Length': contentLength,
+      'Content-Type': contentType,
+      'Accept-Ranges': 'bytes'
+    });
+
+    // res.write(await file.read(start, end));
+
+    const chunkSize = 2 * 1024 * 1024; // 2MB
+    let current = start;
+
+    while (current <= end && res.writable) {
+      const next = Math.min(current + chunkSize - 1, end);
+      const chunk = await file.read(current, next);
+      res.write(chunk);
+      current = next + 1;
+      await new Promise(resolve => setTimeout(resolve, 5)); // Wait 5ms before next read
+    }
+
+    res.end();
+  } catch (err) {
+    if (err.code === 'ENOENT') {
+      res.status(404).send('File not found');
     } else {
-      cb(new Error('Only video files are allowed'));
+      console.error(err);
+      res.status(500).send('Internal server error');
     }
   }
 });
-
-// API Endpoints
-app.get('/api/files', async (req, res) => {
-  try {
-    const files = await fs.readdir(UPLOAD_DIR);
-    const filesData = await Promise.all(files.map(async (file) => {
-      const stat = await fs.stat(path.join(UPLOAD_DIR, file));
-      return {
-        name: file,
-        size: stat.size,
-        uploadedAt: stat.birthtime.toISOString(),
-        downloadUrl: `/files/${encodeURIComponent(file)}`
-      };
-    }));
-    res.json(filesData);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.post('/api/upload', upload.single('file'), async (req, res) => {
-  try {
-    if (!req.file) throw new Error('No file uploaded');
-    res.json({ message: 'File uploaded successfully' });
-  } catch (err) {
-    res.status(400).json({ error: err.message });
-  }
-});
-
-app.delete('/api/files/:filename', async (req, res) => {
-  try {
-    const filename = decodeURIComponent(req.params.filename);
-    await fs.unlink(path.join(UPLOAD_DIR, filename));
-    res.json({ message: 'File deleted successfully' });
-  } catch (err) {
-    res.status(404).json({ error: 'File not found' });
-  }
-});
-
-app.get('/api/disk-space', async (req, res) => {
-  try {
-    const stats = await statfs(UPLOAD_DIR);
-    const total = stats.blocks * stats.bsize;
-    const free = stats.bfree * stats.bsize;
-    const used = total - free;
-    res.json({ total, used, free });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// Start HTTP Server
-app.listen(PORT, HOST, () => {
-  console.log(`HTTP server running on http://${HOST}:${PORT}`);
-});
-
-// Start HTTPS Server if SSL certs are provided
-const SSL_KEY_PATH = process.env.SSL_KEY_PATH;
-const SSL_CERT_PATH = process.env.SSL_CERT_PATH;
-const HTTPS_PORT = process.env.HTTPS_PORT || 3443;
-
-if (SSL_KEY_PATH && SSL_CERT_PATH) {
-  try {
-    const privateKey = readFileSync(SSL_KEY_PATH, 'utf8');
-    const certificate = readFileSync(SSL_CERT_PATH, 'utf8');
-
-    https.createServer(
-      { key: privateKey, cert: certificate },
-      app
-    ).listen(HTTPS_PORT, HOST, () => {
-      console.log(`HTTPS server running on https://${HOST}:${HTTPS_PORT}`);
-    });
-  } catch (error) {
-    console.error('Failed to start HTTPS server:', error.message);
-  }
-}
 

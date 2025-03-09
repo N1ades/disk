@@ -1,61 +1,161 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Video Storage</title>
-    <link rel="stylesheet" href="style.css">
+    <title>File Upload</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .drop-zone {
+            width: 400px;
+            height: 200px;
+            border: 2px dashed #ccc;
+            border-radius: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin: 20px;
+            transition: all 0.3s;
+        }
+
+        .drop-zone.dragover {
+            border-color: #007bff;
+            background-color: #f0f8ff;
+        }
+
+        #downloadSection {
+            margin-top: 20px;
+            display: none;
+        }
+
+        input {
+            width: 400px;
+            padding: 8px;
+            margin-bottom: 10px;
+        }
+
+        button {
+            padding: 10px 20px;
+            background: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+        }
+    </style>
 </head>
 
 <body>
-    <div class="container">
-        <div class="header">
-            <h1>Video Storage</h1>
-            <div class="disk-info">
-                <div class="progress-bar">
-                    <div class="progress-fill"></div>
-                </div>
-                <div class="space-info"></div>
-            </div>
-        </div>
-
-        <div class="upload-area" id="dropZone">
-            <span>Drag & Drop videos here or click to upload</span>
-            <input type="file" id="fileInput" hidden accept="video/*">
-        </div>
-        <div class="upload-progress" id="uploadProgress">
-            <div class="progress-bar">
-                <div class="progress" style="width: 0%"></div>
-            </div>
-            <div class="progress-info">
-                <span class="percentage">0%</span>
-                <span class="speed">0 MB/s</span>
-                <span class="time-remaining">0s remaining</span>
-            </div>
-        </div>
-
-        <table id="filesTable">
-            <thead>
-                <tr>
-                    <th data-sort="name">File Name ▼</th>
-                    <th data-sort="size">Size ▼</th>
-                    <th data-sort="uploadedAt">Upload Date ▼</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody></tbody>
-        </table>
+    <h1>Drag & Drop File Upload</h1>
+    <div class="drop-zone" id="dropZone">
+        Drag your file here
     </div>
-    <div class="modal" id="previewModal">
-        <div class="modal-content">
-            <button class="modal-close" onclick="fileManager.closePreview()">&times;</button>
-            <video class="preview-video" controls>
-                Your browser does not support the video tag.
-            </video>
-        </div>
+    <div id="downloadSection">
+        <a id="downloadUrlA" href=""></a>
+        <input type="text" id="downloadUrl" readonly>
+        <button onclick="copyUrl()">Copy URL</button>
     </div>
-    <script src="app.js"></script>
+
+    <script>
+        const dropZone = document.getElementById('dropZone');
+        const downloadSection = document.getElementById('downloadSection');
+        const downloadUrl = document.getElementById('downloadUrl');
+        const downloadUrlA = document.getElementById('downloadUrlA');
+        
+
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('dragover');
+        });
+
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('dragover');
+        });
+
+        dropZone.addEventListener('drop', async (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('dragover');
+
+            const file = e.dataTransfer.files[0];
+            if (!file) return;
+
+            const ws = new WebSocket(`${location.protocol.includes('s') ? 'wss' : 'ws'}://${location.hostname}`);
+            const MessageType = {
+                INIT: 0,
+                DATA: 1,
+                REQUEST: 2
+            }
+
+            ws.onopen = () => {
+                // Create JSON payload
+                const jsonPayload = JSON.stringify({
+                    size: file.size,
+                    filename: file.name
+                });
+
+                // Convert JSON to bytes using TextEncoder
+                const encoder = new TextEncoder();
+                const jsonBytes = encoder.encode(jsonPayload);
+
+                // Create buffer with 8 zero bytes + JSON bytes
+                const buffer = new Uint8Array(8 + jsonBytes.length);
+
+                buffer.set(new Uint8Array(new BigInt64Array([BigInt(MessageType.INIT)]).buffer), 0);
+
+                // Fill first 8 bytes with zeros (already initialized to 0)
+                buffer.set(jsonBytes, 8); // Add JSON bytes after the 8 zeros
+
+                // Send the binary buffer
+                ws.send(buffer);
+            };
+
+
+
+            ws.onmessage = async (event) => {
+                if (typeof event.data === 'string') {
+                    const data = JSON.parse(event.data);
+                    if (data.downloadLink) {
+                        downloadUrl.value = data.downloadLink;
+                        downloadUrlA.href = data.downloadLink;
+                        downloadUrlA.innerHTML = data.downloadLink;
+                        downloadSection.style.display = 'block';
+                    } else {
+                        const reader = new FileReader();
+                        const chunk = data;
+
+                        reader.onload = (e) => {
+                            const buffer = new Uint8Array(e.target.result);
+
+                            const combined = new Uint8Array(8 + 8 + buffer.byteLength);
+                            combined.set(new Uint8Array(new BigInt64Array([BigInt(MessageType.DATA)]).buffer), 0);
+                            combined.set(new Uint8Array(new BigInt64Array([BigInt(chunk.chunkId)]).buffer), 8);
+                            combined.set(buffer, 16);
+
+                            ws.send(combined);
+                        };
+
+                        const blob = file.slice(chunk.rangeStart,
+                            chunk.rangeEnd === -1 ? undefined : chunk.rangeEnd + 1);
+                        reader.readAsArrayBuffer(blob);
+                    }
+                } else {
+                    console.error('unsupported messageType');
+
+                }
+            };
+        });
+
+        function copyUrl() {
+            downloadUrl.select();
+            document.execCommand('copy');
+        }
+    </script>
 </body>
 
 </html>

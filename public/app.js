@@ -1,292 +1,167 @@
 class FileManager {
     constructor() {
-        this.dropZone = document.getElementById('dropZone');
-        this.fileInput = document.getElementById('fileInput');
-        this.tableBody = document.querySelector('#filesTable tbody');
-        this.spaceInfo = document.querySelector('.space-info');
-        this.progressFill = document.querySelector('.progress-fill');
-
-        this.uploadProgress = document.getElementById('uploadProgress');
-        this.progressElement = this.uploadProgress.querySelector('.progress');
-        this.percentageElement = this.uploadProgress.querySelector('.percentage');
-        this.speedElement = this.uploadProgress.querySelector('.speed');
-        this.timeRemainingElement = this.uploadProgress.querySelector('.time-remaining');
-        
-        this.startTime = null;
-        this.lastLoaded = 0;
-        this.modal = document.getElementById('previewModal');
-        this.previewVideo = this.modal.querySelector('video');
-        this.init();
-
+        this.initResumable();
+        this.initDropZone();
+        this.loadFiles();
+        this.initSorting();
+        setInterval(() => this.updateDiskSpace(), 5000);
     }
 
-    init() {
-        this.loadFiles();
-        this.loadDiskSpace();
+    initResumable() {
+        this.resumable = new Resumable({
+            target: '/upload',
+            chunkSize: 1*1024*1024,
+            simultaneousUploads: 3,
+            testChunks: false
+        });
 
-        // Event handlers
-        this.dropZone.addEventListener('click', () => this.fileInput.click());
-        this.fileInput.addEventListener('change', (e) => this.handleFiles(e.target.files));
+        this.resumable.assignBrowse(document.getElementById('fileInput'));
+        this.resumable.assignDrop(document.getElementById('dropZone'));
+
+        this.resumable.on('fileAdded', (file) => {
+            this.showProgress(file);
+            this.resumable.upload();
+        });
+
+        this.resumable.on('fileProgress', (file) => {
+            this.updateProgress(file);
+        });
+
+        this.resumable.on('fileSuccess', () => {
+            this.loadFiles();
+            this.updateDiskSpace();
+        });
+    }
+
+    initDropZone() {
+        const dropZone = document.getElementById('dropZone');
         
-        // Drag & drop
-        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(event => {
-            this.dropZone.addEventListener(event, this.preventDefaults);
+        dropZone.addEventListener('click', () => {
+            document.getElementById('fileInput').click();
         });
 
-        ['dragenter', 'dragover'].forEach(event => {
-            this.dropZone.addEventListener(event, () => this.highlight());
+        ['dragover', 'drop'].forEach(event => {
+            dropZone.addEventListener(event, e => e.preventDefault());
         });
 
-        ['dragleave', 'drop'].forEach(event => {
-            this.dropZone.addEventListener(event, () => this.unhighlight());
+        dropZone.addEventListener('dragover', () => {
+            dropZone.classList.add('dragover');
         });
 
-        this.dropZone.addEventListener('drop', (e) => {
-            const files = e.dataTransfer.files;
-            this.handleFiles(files);
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('dragover');
         });
 
-        // Sort handlers
-        document.querySelectorAll('th[data-sort]').forEach(th => {
-            th.addEventListener('click', () => this.sortTable(th.dataset.sort));
-        });
-        document.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape') this.closePreview();
-        });
-        this.modal.addEventListener('click', (e) => {
-            if (e.target === this.modal) this.closePreview();
+        dropZone.addEventListener('drop', (e) => {
+            dropZone.classList.remove('dragover');
+            this.resumable.addFiles(e.dataTransfer.files);
         });
     }
 
     async loadFiles() {
-        try {
-            const response = await fetch('/api/files');
-            const files = await response.json();
-            this.renderFiles(files);
-        } catch (err) {
-            this.showError('Failed to load files');
-        }
-    }
-
-    async loadDiskSpace() {
-        try {
-            const response = await fetch('/api/disk-space');
-            const { total, used, free } = await response.json();
-            
-            const format = (bytes) => 
-                (bytes / 1024 ** 3).toLocaleString('en', { maximumFractionDigits: 2 }) + ' GB';
-
-            this.spaceInfo.textContent = `
-                Used: ${format(used)} / Total: ${format(total)}
-            `;
-            this.progressFill.style.width = `${(used / total * 100).toFixed(1)}%`;
-        } catch (err) {
-            this.showError('Failed to load disk info');
-        }
-    }
-
-    async handleFiles(files) {
-        if (files.length === 0) return;
-        
-        const formData = new FormData();
-        formData.append('file', files[0]);
-
-        try {
-            const response = await fetch('/api/upload', {
-                method: 'POST',
-                body: formData
-            });
-
-            if (!response.ok) {
-                const error = await response.json();
-                throw new Error(error.error);
-            }
-
-            this.loadFiles();
-            this.loadDiskSpace();
-        } catch (err) {
-            this.showError(err.message);
-        }
-    }
-
-    async deleteFile(filename) {
-        if (!confirm('Are you sure you want to delete this file?')) return;
-        
-        try {
-            await fetch(`/api/files/${encodeURIComponent(filename)}`, {
-                method: 'DELETE'
-            });
-            
-            this.loadFiles();
-            this.loadDiskSpace();
-        } catch (err) {
-            this.showError('Failed to delete file');
-        }
+        const response = await fetch('/files');
+        const files = await response.json();
+        this.renderFiles(files);
     }
 
     renderFiles(files) {
-        this.tableBody.innerHTML = files.map(file => `
+        const tbody = document.querySelector('#filesTable tbody');
+        tbody.innerHTML = files.map(file => `
             <tr>
-                <td>${file.name.split('-').slice(2).join('-')}</td>
+                <td>${file.name}</td>
                 <td>${this.formatSize(file.size)}</td>
-                <td>${new Date(file.uploadedAt).toLocaleDateString()}</td>
+                <td>${file.type}</td>
+                <td>${new Date(file.uploaded).toLocaleDateString()}</td>
                 <td>
-                    <button class="copy" onclick="fileManager.copyLink('${file.downloadUrl}')">Copy Link</button>
-                    <button class="preview" onclick="fileManager.previewFile('${file.downloadUrl}')">Preview</button>
-                    <a href="${file.downloadUrl}" download>
-                        <button>Download</button>
-                    </a>
-                    <button class="delete" onclick="fileManager.deleteFile('${file.name}')">
-                        Delete
-                    </button>
+                    <button class="button download-btn" onclick="location.href='/download/${file.name}'">Download</button>
+                    <button class="button copy-btn" onclick="navigator.clipboard.writeText(location.origin + '/download/${file.name}')">Copy URL</button>
+                    <button class="button delete-btn" onclick="this.confirmDelete('${file.name}')">Delete</button>
                 </td>
             </tr>
         `).join('');
     }
 
+    async updateDiskSpace() {
+        const response = await fetch('/disk-space');
+        const { free, used, total } = await response.json();
+        const percent = (used / total * 100).toFixed(1);
+        
+        document.querySelector('.progress').style.width = `${percent}%`;
+        document.querySelector('.disk-stats').innerHTML = `
+            Used: ${this.formatSize(used)} / 
+            Total: ${this.formatSize(total)} 
+            (${percent}%)
+        `;
+    }
+
     formatSize(bytes) {
-        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-        if (bytes === 0) return '0 Byte';
-        const i = Math.floor(Math.log(bytes) / Math.log(1024));
-        return (bytes / 1024 ** i).toFixed(2) + ' ' + sizes[i];
-    }
-
-    sortTable(column) {
-        // Implement sorting logic here
-    }
-
-    showError(message) {
-        alert(`Error: ${message}`);
-    }
-
-    preventDefaults(e) {
-        e.preventDefault();
-        e.stopPropagation();
-    }
-
-    highlight() {
-        this.dropZone.style.backgroundColor = 'rgba(33, 150, 243, 0.1)';
-    }
-
-    unhighlight() {
-        this.dropZone.style.backgroundColor = '';
-    }
-
-
-    async handleFiles(files) {
-        if (files.length === 0) return;
+        const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+        let size = bytes;
+        let unit = 0;
         
-        const file = files[0];
-        const xhr = new XMLHttpRequest();
-        const formData = new FormData();
-        formData.append('file', file);
-
-        this.showUploadProgress();
-        this.resetProgress();
-
-        xhr.upload.addEventListener('progress', (e) => {
-            if (e.lengthComputable) {
-                const progress = (e.loaded / e.total) * 100;
-                const currentTime = Date.now();
-                const elapsedTime = (currentTime - this.startTime) / 1000;
-                const speed = e.loaded / elapsedTime; // bytes per second
-                const remainingTime = (e.total - e.loaded) / speed;
-
-                this.updateProgress({
-                    loaded: e.loaded,
-                    total: e.total,
-                    progress,
-                    speed,
-                    remainingTime
-                });
-            }
-        });
-
-        xhr.addEventListener('load', () => {
-            if (xhr.status >= 200 && xhr.status < 300) {
-                this.loadFiles();
-                this.loadDiskSpace();
-            } else {
-                this.showError(xhr.responseText || 'Upload failed');
-            }
-            this.hideUploadProgress();
-        });
-
-        xhr.addEventListener('error', () => {
-            this.showError('Upload failed');
-            this.hideUploadProgress();
-        });
-
-        xhr.open('POST', '/api/upload');
-        xhr.send(formData);
-    }
-
-    showUploadProgress() {
-        this.uploadProgress.style.display = 'block';
-        this.startTime = Date.now();
-        this.lastLoaded = 0;
-    }
-
-    hideUploadProgress() {
-        setTimeout(() => {
-            this.uploadProgress.style.display = 'none';
-            this.progressElement.style.width = '0%';
-        }, 500);
-    }
-
-    resetProgress() {
-        this.progressElement.style.width = '0%';
-        this.progressElement.style.backgroundColor = '#4CAF50';
-        this.percentageElement.textContent = '0%';
-        this.speedElement.textContent = '0 MB/s';
-        this.timeRemainingElement.textContent = '0s remaining';
-    }
-
-    updateProgress({ loaded, total, progress, speed, remainingTime }) {
-        // Анимация прогресса
-        this.progressElement.style.width = `${progress}%`;
+        while(size >= 1024 && unit < units.length-1) {
+            size /= 1024;
+            unit++;
+        }
         
-        // Рассчет скорости в MB/s
-        const speedMB = (speed / 1024 / 1024).toFixed(1);
+        return `${size.toFixed(1)} ${units[unit]}`;
+    }
+
+    showProgress(file) {
+        const progress = document.createElement('div');
+        progress.className = 'upload-progress';
+        progress.innerHTML = `
+            <div>${file.fileName} - <span class="percent">0%</span></div>
+            <div>Speed: <span class="speed">0 MB/s</span></div>
+            <div>Time left: <span class="time">--</span></div>
+        `;
+        document.querySelector('.container').appendChild(progress);
+        file.progressElement = progress;
+    }
+
+    updateProgress(file) {
+        const progress = file.progress();
+        const elapsed = (Date.now() - file.timeStart) / 1000;
+        const speed = (progress * file.size) / elapsed / 1024 / 1024;
+        const remaining = (file.size - progress * file.size) / (speed * 1024 * 1024);
         
-        // Форматирование оставшегося времени
-        const formatTime = (seconds) => {
-            if (seconds > 60) {
-                const mins = Math.floor(seconds / 60);
-                const secs = Math.floor(seconds % 60);
-                return `${mins}m ${secs}s`;
-            }
-            return `${Math.ceil(seconds)}s`;
-        };
+        file.progressElement.querySelector('.percent').textContent = 
+            `${Math.round(progress * 100)}%`;
+        file.progressElement.querySelector('.speed').textContent = 
+            `${speed.toFixed(1)} MB/s`;
+        file.progressElement.querySelector('.time').textContent = 
+            `${remaining.toFixed(1)}s`;
+    }
 
-        // Обновление данных
-        this.percentageElement.textContent = `${Math.round(progress)}%`;
-        this.speedElement.textContent = `${speedMB} MB/s`;
-        this.timeRemainingElement.textContent = `${formatTime(remainingTime)} remaining`;
-
-        // Изменение цвета при приближении к завершению
-        if (progress > 95) {
-            this.progressElement.style.backgroundColor = '#8BC34A';
+    confirmDelete(filename) {
+        if(confirm(`Delete ${filename}?`)) {
+            fetch(`/files/${filename}`, { method: 'DELETE' })
+                .then(() => this.loadFiles())
+                .then(() => this.updateDiskSpace());
         }
     }
 
-    copyLink(url) {
-        navigator.clipboard.writeText(window.location.origin + url)
-            .then(() => alert('Link copied to clipboard!'))
-            .catch(() => alert('Failed to copy link'));
-    }
-
-    previewFile(url) {
-        this.previewVideo.src = url;
-        this.modal.style.display = 'flex';
-        this.previewVideo.play();
-    }
-
-    closePreview() {
-        this.modal.style.display = 'none';
-        this.previewVideo.pause();
-        this.previewVideo.currentTime = 0;
+    initSorting() {
+        document.querySelectorAll('#filesTable th').forEach(header => {
+            header.addEventListener('click', () => {
+                const column = header.cellIndex;
+                const tbody = document.querySelector('#filesTable tbody');
+                const rows = Array.from(tbody.rows);
+                
+                rows.sort((a, b) => {
+                    const aVal = a.cells[column].textContent;
+                    const bVal = b.cells[column].textContent;
+                    
+                    if(column === 1 || column === 3) {
+                        return parseFloat(aVal) - parseFloat(bVal);
+                    }
+                    return aVal.localeCompare(bVal);
+                });
+                
+                tbody.append(...rows);
+            });
+        });
     }
 }
 
-const fileManager = new FileManager();
+new FileManager();
