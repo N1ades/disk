@@ -400,6 +400,7 @@
                     if (data.downloadLink) {
                         downloadLink = data.downloadLink;
                         downloadSection.style.display = 'block';
+                        dropZone.innerHTML = `📄 ${file.name} - Live`
                     } else {
                         const reader = new FileReader();
                         const chunk = data;
@@ -425,12 +426,12 @@
         // Animate the title to show the filename
         function animateTitle(newTitle) {
             let interval = setInterval(() => {
-                document.title = document.title === newTitle ? originalTitle : newTitle;
+                document.title = document.title === newTitle ? newTitle : newTitle;
             }, 1000);
-            setTimeout(() => {
-                clearInterval(interval);
-                document.title = originalTitle;
-            }, 5000);
+            // setTimeout(() => {
+            //     clearInterval(interval);
+            //     document.title = originalTitle;
+            // }, 5000);
         }
 
         // Popup Modal Functions
