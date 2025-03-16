@@ -168,17 +168,35 @@ app.get('/files/:filename', async (req, res: ServerResponse) => {
     // Determine Content-Type
     const contentType = mime.lookup(filename) || 'application/octet-stream';
 
-    // if (!range) {
-    //   // Send full file if no range header
-    //   res.writeHead(200, {
-    //     'Content-Type': contentType,
-    //     'Content-Length': fileSize,
-    //     'Accept-Ranges': 'bytes'
-    //   });
+    if (!range) {
+      // Send full file if no range header
+      res.writeHead(200, {
+        'Content-Type': contentType,
+        'Content-Length': fileSize,
+        'Accept-Ranges': 'bytes'
+      });
 
-    //   res.write(await file.read(0, -1))
-    //   return res.end();
-    // }
+      {
+        const chunkSize = 3 * 1024 * 1024; // 3MB
+        let current = 0;
+
+        while (current <= fileSize - 1) {
+          const next = Math.min(current + chunkSize - 1, fileSize - 1);
+          const chunk = await file.read(current, next);
+
+          if (!res.write(chunk)) {
+            // Wait for the 'drain' event before continuing
+            await new Promise(resolve => res.once('drain', resolve));
+          }
+
+          current = next + 1;
+          await new Promise(resolve => setTimeout(resolve, 5)); // Wait 5ms before next read
+        }
+      }
+
+
+      return res.end();
+    }
 
     // Parse Range header (bytes=start-end)
     // console.log({range});
@@ -220,20 +238,22 @@ app.get('/files/:filename', async (req, res: ServerResponse) => {
 
     // res.write(await file.read(start, end));
 
-    const chunkSize = 2 * 1024 * 1024; // 2MB
-    let current = start;
+    {
+      const chunkSize = 2 * 1024 * 1024; // 2MB
+      let current = start;
 
-    while (current <= end) {
-      const next = Math.min(current + chunkSize - 1, end);
-      const chunk = await file.read(current, next);
+      while (current <= end) {
+        const next = Math.min(current + chunkSize - 1, end);
+        const chunk = await file.read(current, next);
 
-      if (!res.write(chunk)) {
-        // Wait for the 'drain' event before continuing
-        await new Promise(resolve => res.once('drain', resolve));
+        if (!res.write(chunk)) {
+          // Wait for the 'drain' event before continuing
+          await new Promise(resolve => res.once('drain', resolve));
+        }
+
+        current = next + 1;
+        await new Promise(resolve => setTimeout(resolve, 5)); // Wait 5ms before next read
       }
-
-      current = next + 1;
-      await new Promise(resolve => setTimeout(resolve, 5)); // Wait 5ms before next read
     }
 
     res.end();
