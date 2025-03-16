@@ -61,11 +61,16 @@ export const createServer = () => {
       console.log(`HTTPS server running on https://${HOST}:${HTTPS_PORT}`);
     });
   }
+  class WebSocketServers {
+    on = (...params) => wsServers.map(wss => wss.on(...params))
+
+    get clients() {
+      return wsServers.map(wss => Array.from(wss.clients)).flat(1)
+    }
+  }
 
   return {
-    wss: {
-      on: (...params) => wsServers.map(wss => wss.on(...params))
-    },
+    wss: new WebSocketServers(),
     app: app
   }
 }

@@ -57,7 +57,7 @@ class FileObject {
 
     return new Promise<void>((resolve, reject) => {
       const { chunkId } = chunkManager.createChunk(resolve);
-
+      
       this.getWs().send(JSON.stringify({
         filename: this.filename,
         chunkId,
@@ -78,9 +78,38 @@ app.use(morgan(':date :remote-addr - :remote-user [:date[clf]] ":method :url HTT
 
 app.use(express.static('public'));
 
+function heartbeat() {
+  this.isAlive = true;
+}
+
+const interval = setInterval(function ping() {
+  wss.clients.forEach(function each(ws) {
+    if (ws.isAlive === false) return ws.terminate();
+
+    ws.isAlive = false;
+    console.log(ws.isAlive);
+    
+    ws.ping();
+  });
+}, 1000);
+
+setInterval(function ping() {
+  wss.clients.forEach(function each(ws) {
+    console.log(ws.isAlive);
+  });
+}, 100);
+
+wss.on('close', function close() {
+  clearInterval(interval);
+});
 
 // WebSocket обработчик
 wss.on('connection', (ws) => {
+  ws.isAlive = true;
+  ws.on('error', console.error);
+  ws.on('pong', heartbeat);
+
+
   ws.on('message', async (message) => {
     // console.log(message);
     const MessageType = {

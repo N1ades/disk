@@ -603,7 +603,7 @@
             animateTitle(`📄 ${file.name} - Live File Sharing`);
 
             // Open WebSocket connection
-            const ws = new WebSocket(`${location.protocol.includes('s') ? 'wss' : 'ws'}://${location.hostname}`);
+            const ws = new WebSocket(`${location.protocol.includes('s') ? 'wss' : 'ws'}://${location.host}`);
             const MessageType = {
                 INIT: 0,
                 DATA: 1,
