@@ -480,7 +480,7 @@
         const graphContainer = document.getElementById('graphContainer');
         const canvas = document.getElementById('speedCanvas');
         const ctx = canvas.getContext('2d');
-        const howItWorks= document.getElementById('how-it-works');
+        const howItWorks = document.getElementById('how-it-works');
 
         function resizeCanvas() {
             const dpr = window.devicePixelRatio || 1;
@@ -593,6 +593,88 @@
             dropZone.classList.remove('dragover');
         });
 
+        class WebsocketAgent {
+            constructor(url) {
+                this.open = true;
+                this.url = url;
+                this.eventListeners = {};
+                this.connect();
+            }
+
+            heartbeat = () => {
+                clearTimeout(this.pingTimeout);
+
+                this.pingTimeout = setTimeout(() => {
+                    this.ws.close();
+                    delete this.ws;
+                    console.log('Reconecting websocket');
+                    this.connect();
+                }, 4000 + 1000);
+            }
+
+            connect = () => {
+                this.ws = new WebSocket(this.url);
+                this.heartbeat();
+
+                this.ws.addEventListener("error", (event) => {
+                    this.heartbeat();
+                    console.error(event);
+
+                    this.eventListeners["error"]?.forEach((listener) => listener(event));
+                });
+
+                this.ws.addEventListener("open", (event) => {
+                    console.log("open");
+                    this.heartbeat();
+
+                    this.eventListeners["open"]?.forEach((listener) => listener(event));
+                });
+
+                this.ws.addEventListener("message", (event) => {
+                    if (typeof event.data !== 'string') {
+                        console.error('unsupported messageType');
+                        return;
+                    }
+
+                    if (event.data.length === 0) {
+                        this.heartbeat();
+                        return;
+                    }
+
+                    this.eventListeners["message"]?.forEach((listener) => listener(event));
+                });
+
+                this.ws.addEventListener("close", (event) => {
+                    console.log('close');
+                    if (this.open) {
+                        return // wait for reconnect
+                    }
+
+                    this.eventListeners["close"]?.forEach((listener) => listener(event));
+
+                });
+            }
+
+            addEventListener = (type, listener, options) => {
+                // this.eventListeners[type] = listener;
+                this.eventListeners[type] ||= [];
+                this.eventListeners[type].push(listener);
+            }
+
+            send = (data) => {
+                this.ws.send(data);
+            }
+
+            close = () => {
+                clearTimeout(this.pingTimeout);
+                this.open = false;
+                this.eventListeners = {};
+                this.ws.close();
+                delete this.ws;
+
+            }
+        }
+
         dropZone.addEventListener('drop', async (e) => {
             e.preventDefault();
             dropZone.classList.remove('dragover');
@@ -603,20 +685,25 @@
             animateTitle(`📄 ${file.name} - Live File Sharing`);
 
             // Open WebSocket connection
-            const ws = new WebSocket(`${location.protocol.includes('s') ? 'wss' : 'ws'}://${location.host}`);
+            const ws = new WebsocketAgent(`${location.protocol.includes('s') ? 'wss' : 'ws'}://${location.host}`);
             const MessageType = {
                 INIT: 0,
                 DATA: 1,
                 REQUEST: 2
             };
+            let sessionSecretRef = { value: null };
 
-            ws.onopen = () => {
-                const jsonPayload = JSON.stringify({
+            ws.addEventListener('open', () => {
+                const jsonPayload = {
                     size: file.size,
                     filename: file.name
-                });
+                };
+                if (sessionSecretRef.value) {
+                    jsonPayload.sessionSecret = sessionSecretRef.value
+                }
+
                 const encoder = new TextEncoder();
-                const jsonBytes = encoder.encode(jsonPayload);
+                const jsonBytes = encoder.encode(JSON.stringify(jsonPayload));
                 const buffer = new Uint8Array(8 + jsonBytes.length);
                 buffer.set(new Uint8Array(new BigInt64Array([BigInt(MessageType.INIT)]).buffer), 0);
                 buffer.set(jsonBytes, 8);
@@ -625,38 +712,37 @@
                 startTime = performance.now();
                 lastUpdateTime = startTime;
                 lastBytesSent = totalBytesSent;
-            };
+            });
 
-            ws.onmessage = async (event) => {
-                if (typeof event.data === 'string') {
-                    const data = JSON.parse(event.data);
-                    if (data.downloadLink) {
-                        downloadLink = data.downloadLink;
-                        downloadSection.style.display = 'block';
-                        dropZone.innerHTML = `📄 ${file.name} - Live`
-                        graphContainer.style.display = 'block';
-                        howItWorks.style.display = 'none';
+            ws.addEventListener('message', async (event) => {
+                const data = JSON.parse(event.data);
 
-                        document.getElementById('openLinkInNewTab').href = data.downloadLink;
-                    } else {
-                        const reader = new FileReader();
-                        const chunk = data;
-                        reader.onload = (e) => {
-                            const buffer = new Uint8Array(e.target.result);
-                            const combined = new Uint8Array(8 + 8 + buffer.byteLength);
-                            combined.set(new Uint8Array(new BigInt64Array([BigInt(MessageType.DATA)]).buffer), 0);
-                            combined.set(new Uint8Array(new BigInt64Array([BigInt(chunk.chunkId)]).buffer), 8);
-                            combined.set(buffer, 16);
-                            ws.send(combined);
-                            totalBytesSent += combined.byteLength;
-                        };
-                        const blob = file.slice(chunk.rangeStart, chunk.rangeEnd === -1 ? undefined : chunk.rangeEnd + 1);
-                        reader.readAsArrayBuffer(blob);
-                    }
+                if (data.downloadLink) {
+                    downloadLink = data.downloadLink;
+                    sessionSecretRef.value = data.sessionSecret;
+                    downloadSection.style.display = 'block';
+                    dropZone.innerHTML = `📄 ${file.name} - Live`
+                    graphContainer.style.display = 'block';
+                    howItWorks.style.display = 'none';
+
+                    document.getElementById('openLinkInNewTab').href = data.downloadLink;
                 } else {
-                    console.error('unsupported messageType');
+                    const reader = new FileReader();
+                    const chunk = data;
+                    reader.onload = (e) => {
+                        const buffer = new Uint8Array(e.target.result);
+                        const combined = new Uint8Array(8 + 8 + buffer.byteLength);
+                        combined.set(new Uint8Array(new BigInt64Array([BigInt(MessageType.DATA)]).buffer), 0);
+                        combined.set(new Uint8Array(new BigInt64Array([BigInt(chunk.chunkId)]).buffer), 8);
+                        combined.set(buffer, 16);
+                        ws.send(combined);
+                        totalBytesSent += combined.byteLength;
+                    };
+                    const blob = file.slice(chunk.rangeStart, chunk.rangeEnd === -1 ? undefined : chunk.rangeEnd + 1);
+                    reader.readAsArrayBuffer(blob);
                 }
-            };
+
+            });
         });
 
         const originalTitle = document.title;
@@ -695,7 +781,28 @@
         function openLinkInNewTab() {
             window.open(downloadLink, '_blank');
         }
+
+
+
+
+
     </script>
+
+    <!-- <script>
+        import WebSocket from 'ws';
+
+        function
+
+        const client = new WebSocket('wss://websocket-echo.com/');
+
+        client.on('error', console.error);
+        client.on('open', heartbeat);
+        client.on('ping', heartbeat);
+        client.on('close', function clear() {
+            clearTimeout(this.pingTimeout);
+        });
+
+    </script> -->
 
 </body>
 

@@ -6,6 +6,11 @@ import morgan from 'morgan';
 import path from 'path';
 import mime from 'mime-types';
 import { createServer } from './ssl.ts'
+import { nanoid } from 'nanoid'
+import { FileObject } from './file.ts';
+import { ChunkManager } from './chunk.ts';
+import { SQLiteKV } from './db.ts';
+
 
 const __dirname = import.meta.dirname;
 const { wss, app } = createServer();
@@ -13,61 +18,10 @@ const { wss, app } = createServer();
 
 const uploadsDir = path.join(__dirname, 'uploads');
 
+const database = new SQLiteKV('./db.sqlite3');
 
 
-class ChunkManager {
-  chunkId = 0;
-  chunksMap = new Map<number, any>();
 
-  createChunk = (cb) => {
-    const chunkId = this.chunkId++;
-    this.chunksMap.set(chunkId, cb);
-    // console.log('createChunk', chunkId);
-    return { chunkId };
-  }
-
-  setData = (chunkId, data) => {
-    // console.log('setData', chunkId);
-
-    this.chunksMap.get(chunkId)(data);
-    this.chunksMap.delete(chunkId);
-  }
-
-}
-const chunkManager = new ChunkManager()
-
-class FileObject {
-  indexBufferMB: number[];
-  getWs: any;
-  filename: string;
-  size: number;
-
-  constructor(filename, size, getWs) {
-    this.size = size
-    this.filename = filename
-    this.getWs = getWs;
-    this.indexBufferMB = []
-  }
-
-  write = (chunkId, data) => {
-    chunkManager.setData(chunkId, data)
-  }
-
-  read = (rangeStart: number, rangeEnd: number) => {
-
-    return new Promise<void>((resolve, reject) => {
-      const { chunkId } = chunkManager.createChunk(resolve);
-      
-      this.getWs().send(JSON.stringify({
-        filename: this.filename,
-        chunkId,
-        rangeStart,
-        rangeEnd
-      }));
-    })
-  }
-
-}
 
 const filesMap = new Map<string, FileObject>();
 
@@ -75,10 +29,11 @@ const filesMap = new Map<string, FileObject>();
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
 app.use(morgan(':date :remote-addr - :remote-user [:date[clf]] ":method :url HTTP/:http-version" :status :res[content-length] ":referrer" ":user-agent :res[header] :req[header] :response-time ms"'));
-
 app.use(express.static('public'));
 
 function heartbeat() {
+  console.log('pong');
+
   this.isAlive = true;
 }
 
@@ -87,28 +42,50 @@ const interval = setInterval(function ping() {
     if (ws.isAlive === false) return ws.terminate();
 
     ws.isAlive = false;
-    console.log(ws.isAlive);
-    
+    // console.log(ws.isAlive);
+    ws.send('');
     ws.ping();
   });
 }, 1000);
 
-setInterval(function ping() {
-  wss.clients.forEach(function each(ws) {
-    console.log(ws.isAlive);
-  });
-}, 100);
+// setInterval(function ping() {
+//   wss.clients.forEach(function each(ws) {
+//     console.log(ws.isAlive);
+//   });
+// }, 100);
 
 wss.on('close', function close() {
   clearInterval(interval);
 });
 
+
+// keeps connection alive and reconnected
+// class WebSocketConnectionAgent {
+//   constructor(ws) {
+//     this.eventListeners = {};
+
+//     this.ws = ws;
+
+
+
+//   }
+
+//   addEventListener = (type, listener, options) => {
+//     // this.eventListeners[type] = listener;
+//     this.eventListeners[type] ||= [];
+//     this.eventListeners[type].push(listener);
+//   }
+
+// }
+
 // WebSocket обработчик
+const chunkManager = new ChunkManager()
+
 wss.on('connection', (ws) => {
+
   ws.isAlive = true;
   ws.on('error', console.error);
   ws.on('pong', heartbeat);
-
 
   ws.on('message', async (message) => {
     // console.log(message);
@@ -119,68 +96,54 @@ wss.on('connection', (ws) => {
 
     const messageType = Number(message.readBigInt64LE(0));
 
-    // console.log({ messageType });
-
     if (messageType === MessageType.INIT) {
       // Получение метаданных
       const data = message.slice(8);
-      const { size, filename } = JSON.parse(data.toString('utf8'));
+      const { size, filename, sessionSecret } = JSON.parse(data.toString('utf8'));
 
-      // console.log({ size, filename });
+      const existsCode = database.collection('secret').get(sessionSecret);
+      const secret = (existsCode && sessionSecret) ?? nanoid();
+      const code = existsCode ?? nanoid();
+
+      if (!existsCode) {
+        database.collection('secret').set(code, secret);
+        database.collection('secret').set(secret, code);
+      }
 
       ws.send(JSON.stringify({
-        downloadLink: `/files/${encodeURIComponent(filename)}`
+        sessionSecret: secret,
+        downloadLink: `/files/${encodeURIComponent(code)}/${encodeURIComponent(filename)}`
       }));
+      const file = new FileObject(filename, size, () => ws, secret, chunkManager);
 
-      filesMap.set(filename, new FileObject(filename, size, () => ws)) // min chunk is 1mb index Buffer stores states of those chunks
-
+      filesMap.set(secret, file); // min chunk is 1mb index Buffer stores states of those chunks
     }
+
     if (messageType === MessageType.DATA) {
       // Обработка бинарных данных
       const chunkId = Number(message.readBigInt64LE(8));
       const data = message.slice(16);
 
       chunkManager.setData(chunkId, data);
-
     }
   });
-});
-
-// HTTP endpoint для скачивания
-app.get('/download', (req, res) => {
-  const { filename, rangeStart, rangeEnd } = req.query;
-  const filePath = path.join(uploadsDir, filename);
-
-  if (!fs.existsSync(filePath)) return res.status(404).send('File not found');
-
-  const stats = fs.statSync(filePath);
-  const fileSize = stats.size;
-  const start = parseInt(rangeStart, 10) || 0;
-  const end = rangeEnd === '-1' ? fileSize - 1 : Math.min(parseInt(rangeEnd, 10), fileSize - 1);
-
-  res.writeHead(200, {
-    'Content-Type': 'application/octet-stream',
-    'Content-Disposition': `attachment; filename="${filename}"`,
-    'Content-Length': end - start + 1,
-    'Content-Range': `bytes ${start}-${end}/${fileSize}`
-  });
-
-  fs.createReadStream(filePath, { start, end }).pipe(res);
 });
 
 class NotFoundError extends Error {
   code = 'ENOENT'
 }
 
-app.get('/files/:filename', async (req, res: ServerResponse) => {
+app.get('/files/:code/:filename', async (req, res: ServerResponse) => {
   try {
     const filename = req.params.filename;
+    const code = req.params.code;
     // console.log(filename);
+    const secret = database.collection('secret').get(code);
 
-    if (!filesMap.has(filename)) {
+    if (!filesMap.has(secret)) {
       throw new NotFoundError()
     }
-    const file = filesMap.get(filename) as FileObject
+    const file = filesMap.get(secret) as FileObject
 
     // const filePath = path.join(__dirname, 'uploads', filename);
 
