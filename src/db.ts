@@ -28,6 +28,8 @@ export class SQLiteKV {
             },
 
             get: (key) => {
+                console.log({key});
+                
                 const result = this.db.prepare(`SELECT value FROM "${name}" WHERE key = ?`).get(key);
                 return result ? JSON.parse(result.value) : null;
             },

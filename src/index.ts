@@ -11,6 +11,10 @@ import { FileObject } from './file.ts';
 import { ChunkManager } from './chunk.ts';
 import { SQLiteKV } from './db.ts';
 
+const tryCatch = (func, fail) => {
+  try { return func() }
+  catch (e) { return fail }
+}
 
 const __dirname = import.meta.dirname;
 const { wss, app } = createServer();
@@ -19,8 +23,6 @@ const { wss, app } = createServer();
 const uploadsDir = path.join(__dirname, 'uploads');
 
 const database = new SQLiteKV('./db.sqlite3');
-
-
 
 
 const filesMap = new Map<string, FileObject>();
@@ -32,7 +34,7 @@ app.use(morgan(':date :remote-addr - :remote-user [:date[clf]] ":method :url HTT
 app.use(express.static('public'));
 
 function heartbeat() {
-  console.log('pong');
+  //console.log('pong');
 
   this.isAlive = true;
 }
@@ -58,26 +60,6 @@ wss.on('close', function close() {
   clearInterval(interval);
 });
 
-
-// keeps connection alive and reconnected
-// class WebSocketConnectionAgent {
-//   constructor(ws) {
-//     this.eventListeners = {};
-
-//     this.ws = ws;
-
-
-
-//   }
-
-//   addEventListener = (type, listener, options) => {
-//     // this.eventListeners[type] = listener;
-//     this.eventListeners[type] ||= [];
-//     this.eventListeners[type].push(listener);
-//   }
-
-// }
-
 // WebSocket обработчик
 const chunkManager = new ChunkManager()
 
@@ -91,33 +73,65 @@ wss.on('connection', (ws) => {
     // console.log(message);
     const MessageType = {
       INIT: 0,
-      DATA: 1
+      DATA: 1,
+      REQUEST: 2,
+      FILES: 3,
     }
 
     const messageType = Number(message.readBigInt64LE(0));
 
     if (messageType === MessageType.INIT) {
-      // Получение метаданных
       const data = message.slice(8);
-      const { size, filename, sessionSecret } = JSON.parse(data.toString('utf8'));
+      if (data.length > 1_000_000) {
+        throw new Error('Payload too large');
+      }
+      console.log('init');
 
-      const existsCode = database.collection('secret').get(sessionSecret);
+
+      // const { size, filename, sessionSecret } = JSON.parse(data.toString('utf8'));
+      const { sessionSecret } = JSON.parse(data.toString('utf8'));
+
+      if (
+        // typeof size !== 'number' ||
+        // typeof filename !== 'string' ||
+        typeof sessionSecret !== 'string' && typeof sessionSecret !== 'undefined'
+      ) {
+        throw new Error('Invalid input types');
+      }
+
+      const existsCode = sessionSecret && database.collection('secret').get(sessionSecret);
       const secret = (existsCode && sessionSecret) ?? nanoid();
       const code = existsCode ?? nanoid();
+
+      console.log({ secret });
+      if (filesMap.has(secret)) {
+
+        filesMap.get(secret)?.getWs().close();
+        console.log('old ws closed');
+        
+        // throw new UniqueKeyConflictError()
+      }
 
       if (!existsCode) {
         database.collection('secret').set(code, secret);
         database.collection('secret').set(secret, code);
       }
 
+      console.log('send Link');
+
       ws.send(JSON.stringify({
         sessionSecret: secret,
-        downloadLink: `/files/${encodeURIComponent(code)}/${encodeURIComponent(filename)}`
+        // downloadLink: `/files/${encodeURIComponent(code)}/${encodeURIComponent(filename)}`
       }));
-      const file = new FileObject(filename, size, () => ws, secret, chunkManager);
+      // const file = new FileObject(filename, size, () => ws, secret, chunkManager);
 
-      filesMap.set(secret, file); // min chunk is 1mb index Buffer stores states of those chunks
+      // filesMap.set(secret, file); // min chunk is 1mb index Buffer stores states of those chunks
     }
+
+    if (messageType === MessageType.FILES) {
+      
+    }
+
 
     if (messageType === MessageType.DATA) {
       // Обработка бинарных данных
@@ -130,6 +144,9 @@ wss.on('connection', (ws) => {
 });
 
 class NotFoundError extends Error {
+  code = 'ENOENT'
+}
+class UniqueKeyConflictError extends Error {
   code = 'ENOENT'
 }
 
@@ -211,7 +228,6 @@ app.get('/files/:code/:filename', async (req, res: ServerResponse) => {
       });
       return res.end();
     }
-
     // const MAX_CHUNK_SIZE = 1000000;
     // end = Math.min(end, fileSize - 1, start + MAX_CHUNK_SIZE);
 
@@ -229,6 +245,7 @@ app.get('/files/:code/:filename', async (req, res: ServerResponse) => {
     });
 
     // res.write(await file.read(start, end));
+    // filesMap.delete(secret);
 
     {
       const chunkSize = 2 * 1024 * 1024; // 2MB
