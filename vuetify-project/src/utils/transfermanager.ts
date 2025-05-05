@@ -6,8 +6,39 @@ const MessageType = {
     DATA: 1,
     REQUEST: 2,
     FILES: 3,
+    FILES_CLIENT_META: 4
 };
 
+type FileClientMeta = {
+    path: string;
+    size: number;
+    type: string;
+    lastModified: number;
+};
+
+
+type FileInfo = {
+    lastModified: number;
+    name: string;
+    size: number;
+    type: string;
+};
+
+type FileEntry = {
+    depth: number;
+    file: {
+        lastModified: number;
+        lastModifiedDate: string;
+        name: string;
+        size: number;
+        type: string;
+        webkitRelativePath: string;
+    };
+    info: FileInfo & {
+        path: string;
+        progress: number;
+    };
+};
 
 export class TransferManager {
 
@@ -20,7 +51,27 @@ export class TransferManager {
                 file.progress = 50;
             }
             this.eventListeners["change"]?.forEach((listener) => listener(array));
-            
+            console.log(array);
+
+
+            const jsonPayload = JSON.stringify(files.map((item) => {
+                return {
+                    path: item.info.path,
+                    size: item.file.size,
+                    type: item.file.type,
+                    lastModified: item.file.lastModified
+                }
+            }))
+
+            const encoder = new TextEncoder();
+            const jsonBytes = encoder.encode(jsonPayload);
+            const buffer = new Uint8Array(8 + jsonBytes.length);
+
+            buffer.set(new Uint8Array(new BigInt64Array([BigInt(MessageType.FILES_CLIENT_META)]).buffer), 0);
+            buffer.set(jsonBytes, 8);
+            console.log('send init');
+
+            this.ws.send(buffer);
         })
 
 
@@ -97,7 +148,7 @@ export class TransferManager {
         this.ws.close();
     }
 
-    
+
     eventListeners = {};
     addEventListener = (type, listener, options) => {
         // this.eventListeners[type] = listener;

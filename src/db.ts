@@ -54,6 +54,7 @@ export class SQLiteKV {
 }
 
 
+export const db = new SQLiteKV('./db.sqlite3');
 // // // Usage example
 
 // try {

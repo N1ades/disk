@@ -9,7 +9,9 @@ import { createServer } from './ssl.ts'
 import { nanoid } from 'nanoid'
 import { FileObject } from './file.ts';
 import { ChunkManager } from './chunk.ts';
-import { SQLiteKV } from './db.ts';
+import { db } from './db.ts';
+import { SessionManager } from './sessionmanager.ts';
+import { TransferManager } from './transfermanager.ts';
 
 const tryCatch = (func, fail) => {
   try { return func() }
@@ -22,7 +24,6 @@ const { wss, app } = createServer();
 
 const uploadsDir = path.join(__dirname, 'uploads');
 
-const database = new SQLiteKV('./db.sqlite3');
 
 
 const filesMap = new Map<string, FileObject>();
@@ -63,6 +64,8 @@ wss.on('close', function close() {
 // WebSocket обработчик
 const chunkManager = new ChunkManager()
 
+const sessionManager = new SessionManager();
+
 wss.on('connection', (ws) => {
 
   ws.isAlive = true;
@@ -70,13 +73,15 @@ wss.on('connection', (ws) => {
   ws.on('pong', heartbeat);
 
   ws.on('message', async (message) => {
-    // console.log(message);
+
     const MessageType = {
       INIT: 0,
       DATA: 1,
       REQUEST: 2,
       FILES: 3,
-    }
+      FILES_CLIENT_META: 4,
+      FILES_CLIENT_DELETION: 5
+    };
 
     const messageType = Number(message.readBigInt64LE(0));
 
@@ -85,61 +90,84 @@ wss.on('connection', (ws) => {
       if (data.length > 1_000_000) {
         throw new Error('Payload too large');
       }
-      console.log('init');
 
-
-      // const { size, filename, sessionSecret } = JSON.parse(data.toString('utf8'));
       const { sessionSecret } = JSON.parse(data.toString('utf8'));
 
       if (
-        // typeof size !== 'number' ||
-        // typeof filename !== 'string' ||
         typeof sessionSecret !== 'string' && typeof sessionSecret !== 'undefined'
       ) {
         throw new Error('Invalid input types');
       }
 
-      const existsCode = sessionSecret && database.collection('secret').get(sessionSecret);
-      const secret = (existsCode && sessionSecret) ?? nanoid();
-      const code = existsCode ?? nanoid();
-
-      console.log({ secret });
-      if (filesMap.has(secret)) {
-
-        filesMap.get(secret)?.getWs().close();
-        console.log('old ws closed');
-        
-        // throw new UniqueKeyConflictError()
-      }
-
-      if (!existsCode) {
-        database.collection('secret').set(code, secret);
-        database.collection('secret').set(secret, code);
-      }
-
-      console.log('send Link');
+      ws.transferManager ??= sessionManager.getTransferManager(sessionSecret);
 
       ws.send(JSON.stringify({
-        sessionSecret: secret,
-        // downloadLink: `/files/${encodeURIComponent(code)}/${encodeURIComponent(filename)}`
+        sessionSecret: ws.transferManager.sessionSecret,
       }));
-      // const file = new FileObject(filename, size, () => ws, secret, chunkManager);
-
-      // filesMap.set(secret, file); // min chunk is 1mb index Buffer stores states of those chunks
     }
 
-    if (messageType === MessageType.FILES) {
-      
+    const transferManager: TransferManager = ws.transferManager;
+
+    if (!transferManager) {
+      ws.terminate();
+      return
+    }
+
+    type FileClientMeta = {
+      path: string;
+      size: number;
+      type: string;
+      lastModified: number;
+    };
+
+
+    if (messageType === MessageType.FILES_CLIENT_META) {
+
+      const data = message.slice(8);
+      const decoder = new TextDecoder();
+
+      const files: FileClientMeta[] = JSON.parse(decoder.decode(data));
+
+      transferManager.fileManager.addFiles(files);
+
+      ws.send(JSON.stringify(
+        files.map((file) => {
+          return {
+            path: file.path,
+            link: `${transferManager.code}/${file.path}`,
+            // deleted: false
+          }
+        })
+      ));
     }
 
 
-    if (messageType === MessageType.DATA) {
-      // Обработка бинарных данных
-      const chunkId = Number(message.readBigInt64LE(8));
-      const data = message.slice(16);
+    if (messageType === MessageType.FILES_CLIENT_DELETION) {
+      const data = message.slice(8);
+      const decoder = new TextDecoder();
 
-      chunkManager.setData(chunkId, data);
+      const files: FileClientMeta[] = JSON.parse(decoder.decode(data));
+
+      transferManager.fileManager.deleteFiles(files);
+
+      ws.send(JSON.stringify(
+        files.map((file) => {
+          return {
+            path: file.path,
+            deleted: true
+          }
+        })
+      ));
     }
+
+
+    // if (messageType === MessageType.DATA) {
+    //   // Обработка бинарных данных
+    //   const chunkId = Number(message.readBigInt64LE(8));
+    //   const data = message.slice(16);
+
+    //   chunkManager.setData(chunkId, data);
+    // }
   });
 });
 
@@ -155,7 +183,7 @@ app.get('/files/:code/:filename', async (req, res: ServerResponse) => {
     const filename = req.params.filename;
     const code = req.params.code;
     // console.log(filename);
-    const secret = database.collection('secret').get(code);
+    const secret = db.collection('secret').get(code);
 
     if (!filesMap.has(secret)) {
       throw new NotFoundError()
