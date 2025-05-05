@@ -1,25 +1,25 @@
 <template>
-  <v-container>
-    <v-card class="mx-auto" max-width="800px">
+  <v-container max-width="100%" min-height="100vh" style="display: grid">
+    <v-card class="mx-auto" max-width="100%" height="100%" width="100%" min-height="100%"
+      style="display:grid; grid-template-rows: auto auto 1fr;">
       <v-card-title class="text-h5">
-        File Uploader
+        Realtime File Sharing
       </v-card-title>
 
-      <!-- Drop Area Zone and File Selection -->
       <v-card-text>
-
 
         <v-sheet class="d-flex flex-column align-center justify-center pa-6 mb-6" height="200" rounded border
           :color="isDragging ? 'primary' : ''" style="border-style: dashed; cursor: pointer; position: relative"
           @dragover.prevent="isDragging = true" @dragleave.prevent="isDragging = false" @drop.prevent="onDrop"
           @click="$refs.fileInput.click()">
-          <v-progress-linear :model-value="45" color="grey-darken-3"
+          <v-progress-linear v-if="dropProgress" :model-value="dropProgress * 100" color="grey-darken-3"
             :style="{ position: 'absolute', width: '100%', top: 0, left: 0, height: '100%', }"></v-progress-linear>
 
 
           <v-icon :style="{ position: 'relative' }" size="64" color="grey">mdi-cloud-upload-outline</v-icon>
           <div :style="{ position: 'relative' }" class="text-body-1 mt-4">
-            Drag and drop files here or click to select files
+            <span v-if="dropProgress">Reading files metadata {{ `${Math.round(dropProgress * 100)}%` }}</span>
+            <span v-else>Drag and drop files here or click to select files</span>
           </div>
           <input :style="{ position: 'relative' }" ref="fileInput" type="file" multiple @change="onFileSelected"
             class="d-none" />
@@ -36,49 +36,58 @@
           <v-btn color="error" prepend-icon="mdi-delete" @click="clearFiles" :disabled="files.length === 0">
             Clear All
           </v-btn>
+
+          <v-btn style="margin-left: auto;" prepend-icon="mdi-cast" @click="clearFiles" :disabled="dropProgress || files.length >= 1">
+            Share Screen And Sound 
+          </v-btn>
         </div>
       </v-card-text>
 
       <!-- Virtual Scroll with Items -->
-      <v-card-text v-if="files.length > 0">
+      <v-card-text v-if="files.length" style="display:grid; grid-template-rows: auto 1fr;">
         <div class="text-h6 mb-2">Files ({{ files.length }})</div>
-        <v-virtual-scroll :items="files" height="400" item-height="70">
-          <template v-slot:default="{ item }">
-            <v-card class="mb-2"
-              :style="{ position: 'relative', overflow: 'hidden', marginLeft: `${item.depth * 32}px` }">
-              <!-- Progress Bar as Background -->
-              <v-progress-linear :model-value="item.progress" color="grey-darken-3"
-                :style="{ position: 'absolute', width: '100%', height: '100%', top: 0, left: 0 }"></v-progress-linear>
+        <div style="position:relative;">
+          <v-virtual-scroll :items="files" width="100%" height="100%" max-height="100%" item-height="70"
+            style="position:absolute; ">
+            <template v-slot:default="{ item }">
+              <v-card class="mb-2"
+                :style="{ position: 'relative', overflow: 'hidden', marginLeft: `${item.depth * 32}px` }">
+                <v-progress-linear :model-value="Math.round(item.progress / (item.count || 1))" color="grey-darken-3"
+                  :style="{ position: 'absolute', width: '100%', height: '100%', top: 0, left: 0 }"></v-progress-linear>
 
-              <div class="d-flex align-center pa-4" style="position: relative; z-index: 1">
-                <v-avatar class="me-4" :color="getFileColor(item.file.name)" size="40">
-                  <v-icon dark>{{ getFileIcon(item.file.name) }}</v-icon>
-                </v-avatar>
+                <div class="d-flex align-center pa-4" style="position: relative; z-index: 1">
+                  <v-avatar class="me-4" :color="getFileColor(item.file.name)" size="40">
+                    <v-icon dark>{{ getFileIcon(item) }}</v-icon>
+                  </v-avatar>
 
-                <div class="flex-grow-1">
-                  <div class="text-subtitle-1 text-truncate">
-                    {{ item.file.name }}
+                  <div class="flex-grow-1">
+                    <div class="text-subtitle-1 text-truncate">
+                      {{ item.file.name }}
+                    </div>
+                    <div class="text-caption">
+
+                      {{ formatFileSize(item.file.size) }} • <span v-if="item.count">{{ item.count }} files •</span> {{
+                        Math.round(item.progress / (item.count || 1)) }}% transfered
+                    </div>
                   </div>
-                  <div class="text-caption">
-                    {{ formatFileSize(item.file.size) }} • {{ item.progress }}% complete
+
+                  <div>
+                    <v-btn size="small" icon variant="text" @click="copyLink(item)">
+                      <v-icon>mdi-link-variant</v-icon>
+                      <v-tooltip activator="parent" location="top">Copy Link</v-tooltip>
+                    </v-btn>
+
+                    <v-btn size="small" icon variant="text" color="error" @click="removeFile(item)">
+                      <v-icon>mdi-close</v-icon>
+                      <v-tooltip activator="parent" location="top">Remove</v-tooltip>
+                    </v-btn>
                   </div>
                 </div>
+              </v-card>
+            </template>
+          </v-virtual-scroll>
+        </div>
 
-                <div>
-                  <v-btn size="small" icon variant="text" @click="copyLink(item)">
-                    <v-icon>mdi-link-variant</v-icon>
-                    <v-tooltip activator="parent" location="top">Copy Link</v-tooltip>
-                  </v-btn>
-
-                  <v-btn size="small" icon variant="text" color="error" @click="removeFile(item)">
-                    <v-icon>mdi-close</v-icon>
-                    <v-tooltip activator="parent" location="top">Remove</v-tooltip>
-                  </v-btn>
-                </div>
-              </div>
-            </v-card>
-          </template>
-        </v-virtual-scroll>
       </v-card-text>
 
       <v-card-text v-else class="text-center text-subtitle-1 text-grey">
@@ -103,71 +112,88 @@ export default {
       isDragging: false,
       snackbar: false,
       snackbarText: '',
+      dropProgress: 0,
+      openFoldersMap: new Map()
     }
   },
   beforeMount() {
-    console.log('meeme');
-
     this.transferManager = new TransferManager();
+    this.transferManager.files = this.files;
+    this.transferManager.addEventListener('change', this.filesChanged)
 
   },
   beforeUnmount() {
     this.transferManager.destroy()
   },
-  
+
   methods: {
-    onDrop(event) {
+    filesChanged(files) {
+      const folderMap = new Map();
+      for (const item of files) {
+        const folders = item.path.split('/');
+        if (folders.length <= 1) {
+          continue;
+        }
+        folders.length = folders.length - 1;
+
+        let path = '';
+        let depth = 0;
+        for (const folder of folders) {
+          path += `${folder}`
+
+          let exists = folderMap.get(path);
+          if (!exists) {
+            exists = { size: 0, path, depth, progress: 0, count: 0 }
+            folderMap.set(path, exists);
+          }
+          exists.size += item.file.size;
+          exists.progress += item.progress;
+          exists.count++;
+          depth += 1;
+          path += `/`;
+        }
+        item.depth = depth;
+      }
+
+      const folderObjects = Array.from(folderMap.values()).map(folder => {
+        return {
+          path: folder.path,
+          progress: folder.progress,
+          isFolder: true,
+          depth: folder.depth,
+          count: folder.count,
+          file: {
+            name: folder.path.split('/').pop(),
+            size: folder.size,
+          }
+        }
+      })
+
+      this.files = [...folderObjects, ...files].toSorted((a, b) => a.path.depth - b.path.depth || b.isFolder - a.isFolder || a.path.localeCompare(b.path));
+    },
+
+    async onDrop(event) {
       this.isDragging = false
-      const newFiles = Array.from(event.dataTransfer.files)
-      this.addFiles(newFiles)
+      await this.transferManager.fileManager.dropzoneEventHandler(event, (progress) => { this.dropProgress = progress });
+      this.dropProgress = 0;
     },
 
-    onFileSelected(event) {
-      // const newFiles = Array.from(event.target.files)
-      this.transferManager.fileManager.fileChangeEventHandler(event);
-      event.target.value = null // Reset input to allow selecting the same file again
+    async onFileSelected(event) {
+      this.transferManager.fileManager.fileChangeEventHandler(event, (progress) => { this.dropProgress = progress });
+      this.dropProgress = 0;
     },
 
-    onFolderSelected(event) {
-      // const newFiles = Array.from(event.target.files)
-      this.transferManager.fileManager.fileChangeEventHandler(event);
-      // this.transferManager.addFiles(event);
-      event.target.value = null // Reset input
+    async onFolderSelected(event) {
+      this.transferManager.fileManager.fileChangeEventHandler(event, (progress) => { this.dropProgress = progress });
+      this.dropProgress = 0;
     },
-
-    // addFiles(newFiles) {
-
-    //   const filesToAdd = newFiles.map(file => ({
-    //     id: Math.random().toString(36).substring(2, 15),
-    //     file: file,
-    //     progress: Math.floor(Math.random() * 100), // Simulating progress
-    //     link: URL.createObjectURL(file)
-    //   }))
-
-    //   this.files = [...this.files, ...filesToAdd]
-    //   this.showSnackbar(`Added ${filesToAdd.length} file(s)`)
-    // },
 
     removeFile(item) {
-      this.transferManager.removeFile(item);
-
-      // const index = this.files.findIndex(f => f.id === item.id)
-      // if (index !== -1) {
-      //   // Revoke object URL to prevent memory leaks
-      //   URL.revokeObjectURL(item.link)
-      //   this.files.splice(index, 1)
-      //   this.showSnackbar('File removed')
-      // }
+      this.transferManager.fileManager.removeFile(item);
     },
 
     clearFiles() {
-      this.transferManager.clearFiles();
-      // Clean up object URLs
-      // this.files.forEach(item => {
-      //   URL.revokeObjectURL(item.link)
-      // })
-      // this.files = []
-      // this.showSnackbar('All files cleared')
+      this.transferManager.fileManager.clearFiles();
     },
 
     copyLink(item) {
@@ -191,10 +217,16 @@ export default {
       return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i]
     },
 
-    getFileIcon(filename) {
+    getFileIcon(item) {
+      if (item.isFolder) {
+        return 'mdi-folder-open';
+      }
+
+      const filename = item.file.name;
       const extension = filename.split('.').pop().toLowerCase()
 
       const iconMap = {
+        folder: 'mdi-folder-open',
         pdf: 'mdi-file-pdf-box',
         doc: 'mdi-file-word',
         docx: 'mdi-file-word',

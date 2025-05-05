@@ -9,6 +9,13 @@ const immediate = (fn) => new Promise<void>(async (resolve, reject) => {
     }, 0);
 })
 
+const debounce = (func, delay) => {
+    let timeoutId;
+    return (...args) => {
+        clearTimeout(timeoutId);
+        timeoutId = setTimeout(() => func(...args), delay);
+    };
+};
 
 const getAllFileEntries = async (dataTransferItemList) => {
     let fileEntries = [];
@@ -65,6 +72,7 @@ const readEntriesPromise = async (directoryReader) => {
 export class FileManager {
     files = new Map();
     filesInfo = new Map();
+    eventListeners = {};
 
     addFile = async (entry) => {
         // console.log('add file', entry);
@@ -76,7 +84,7 @@ export class FileManager {
         const path = entry.fullPath || entry.webkitRelativePath || file.webkitRelativePath || file.fullPath || file.name;
 
         const meta = {
-            path: 'Shared/' + path.replace(/^\/+/, ''),
+            path: 'All/' + path.replace(/^\/+/, ''),
             info: {
                 name: path.split('/').pop(),
                 lastModified: file.lastModified,
@@ -100,19 +108,19 @@ export class FileManager {
 
         this.files.set(meta.path, meta);
         this.filesInfo.set(JSON.stringify(meta.info), meta);
-        // this.updateList();
+        this.updateList();
     }
 
-    // updateList = debounce(async () => {
-    //     renderTree(document.getElementById('fileTree'), this.files);
-    // }, 100);
+    updateList = debounce(async () => {
+        this.eventListeners["change"]?.forEach((listener) => listener(this.files));
+    }, 100);
 
 
 
     dropzoneEventHandler = async (event, progressCallback) => {
         event.preventDefault();
+        immediate(() => progressCallback(0.01))
         let files = await getAllFileEntries(event.dataTransfer.items);
-        console.log(files.length);
         console.log(files.length);
         let i = 0;
         for (const file of files) {
@@ -126,7 +134,10 @@ export class FileManager {
     }
 
     fileChangeEventHandler = async (event, progressCallback) => {
+        event.preventDefault();
         let files = Array.from(event.currentTarget.files);
+        immediate(() => progressCallback(0.01))
+
         try {
             let i = 0;
             for (const file of files) {
@@ -139,5 +150,11 @@ export class FileManager {
         } finally {
             event.currentTarget.value = null;
         }
+    }
+
+    addEventListener = (type, listener, options) => {
+        // this.eventListeners[type] = listener;
+        this.eventListeners[type] ||= [];
+        this.eventListeners[type].push(listener);
     }
 }

@@ -14,6 +14,16 @@ export class TransferManager {
     constructor() {
         this.fileManager = new FileManager();
 
+        this.fileManager.addEventListener('change', (files) => {
+            const array = Array.from(files.values());
+            for (const file of array) {
+                file.progress = 50;
+            }
+            this.eventListeners["change"]?.forEach((listener) => listener(array));
+            
+        })
+
+
         this.ws = new WebsocketManager(`${location.protocol.includes('s') ? 'wss' : 'ws'}://${location.host}`);
 
         this.ws.addEventListener('open', () => {
@@ -85,5 +95,13 @@ export class TransferManager {
 
     destroy = () => {
         this.ws.close();
+    }
+
+    
+    eventListeners = {};
+    addEventListener = (type, listener, options) => {
+        // this.eventListeners[type] = listener;
+        this.eventListeners[type] ||= [];
+        this.eventListeners[type].push(listener);
     }
 }

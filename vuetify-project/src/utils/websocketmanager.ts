@@ -25,7 +25,7 @@ export class WebsocketManager {
     }
 
     connect = () => {
-        console.log('create WebSocket ');
+        console.log('create WebSocket');
         
         this.ws = new WebSocket(this.url);
         this.heartbeat();
