@@ -14,7 +14,6 @@
     "@fontsource/roboto": "5.2.5",
     "@mdi/font": "7.4.47",
     "http-proxy": "^1.18.1",
-    "p-throttle": "^7.0.0",
     "throttle-debounce": "^5.0.2",
     "vue": "^3.5.13",
     "vuetify": "^3.8.1"

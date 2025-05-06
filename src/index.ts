@@ -1,4 +1,5 @@
 
+import '@dotenvx/dotenvx/config'
 import express from 'express';
 import { ServerResponse } from 'http';
 import fs from 'fs';
@@ -9,18 +10,12 @@ import { createServer } from './ssl.ts'
 import { SessionManager } from './sessionmanager.ts';
 import { TransferManager } from './transfermanager.ts';
 
-const tryCatch = (func, fail) => {
-  try { return func() }
-  catch (e) { return fail }
-}
 
 const __dirname = import.meta.dirname;
 const { wss, app } = createServer();
 //  // Используем один сервер для HTTP и WS
 
 const uploadsDir = path.join(__dirname, 'uploads');
-
-
 
 // const filesMap = new Map<string, FileObject>();
 
@@ -43,7 +38,7 @@ const interval = setInterval(function ping() {
     ws.send('');
     ws.ping();
   });
-}, 1000);
+}, 2000);
 
 // setInterval(function ping() {
 //   wss.clients.forEach(function each(ws) {
@@ -65,7 +60,7 @@ wss.on('connection', (ws) => {
   ws.on('pong', heartbeat);
 
   const chunkRequest = (chunk) => {
-    
+
     ws.send(JSON.stringify(chunk));
   }
 
@@ -117,7 +112,7 @@ wss.on('connection', (ws) => {
       return
     }
 
-     type FileClientMeta = {
+    type FileClientMeta = {
       path: string;
       size: number;
       type: string;
@@ -131,7 +126,7 @@ wss.on('connection', (ws) => {
       const decoder = new TextDecoder();
 
       const files: FileClientMeta[] = JSON.parse(decoder.decode(data));
-      
+
 
       transferManager.fileManager.addFiles(files);
 
@@ -145,7 +140,7 @@ wss.on('connection', (ws) => {
           }
         })
       ));
-      
+
       // send not answered data requests again
     }
 
@@ -227,11 +222,13 @@ app.get('/:code/*', async (req, res: ServerResponse) => {
 
         while (current <= file.size - 1) {
           const next = Math.min(current + chunkSize - 1, file.size - 1);
-          const chunk = await transferManager.chunkManager.read(file, current, next);
+          const chunks = await transferManager.chunkManager.read(file, current, next);
 
-          if (!res.write(chunk)) {
-            // Wait for the 'drain' event before continuing
-            await new Promise(resolve => res.once('drain', resolve));
+          for (const chunk of chunks) {
+            if (!res.write(chunk)) {
+              // Wait for the 'drain' event before continuing
+              await new Promise(resolve => res.once('drain', resolve));
+            }
           }
 
           current = next + 1;
@@ -283,11 +280,14 @@ app.get('/:code/*', async (req, res: ServerResponse) => {
 
       while (current <= end) {
         const next = Math.min(current + chunkSize - 1, end);
-        const chunk = await transferManager.chunkManager.read(file, current, next);
+        const chunks = await transferManager.chunkManager.read(file, current, next);
 
-        if (!res.write(chunk)) {
-          // Wait for the 'drain' event before continuing
-          await new Promise(resolve => res.once('drain', resolve));
+
+        for (const chunk of chunks) {
+          if (!res.write(chunk)) {
+            // Wait for the 'drain' event before continuing
+            await new Promise(resolve => res.once('drain', resolve));
+          }
         }
 
         current = next + 1;

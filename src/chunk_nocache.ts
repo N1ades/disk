@@ -104,7 +104,7 @@ export class ChunkManager {
     read = async (file: FileClientMeta, rangeStart: number, rangeEnd: number) => {
         const CHUNK_SIZE = 2_000_000;
         const startChunk = Math.floor(rangeStart / CHUNK_SIZE);
-        const endChunk = Math.floor(rangeEnd / CHUNK_SIZE); // use floor here to exclude extra chunk
+        const endChunk = Math.ceil((rangeEnd) / CHUNK_SIZE);
 
         const chunksPromises: Promise<Buffer>[] = [];
 
@@ -112,29 +112,11 @@ export class ChunkManager {
             chunksPromises.push(this.getChunk(file, index));
         }
 
-        const chunks = await Promise.all(chunksPromises);
-        const result: Buffer[] = [];
+        const buffers = Buffer.concat(await Promise.all(chunksPromises));
+        const offsetStart = rangeStart - (startChunk * CHUNK_SIZE);
+        const offsetEnd = offsetStart + (rangeEnd - rangeStart);
 
-        for (let i = 0; i < chunks.length; i++) {
-            const isFirst = i === 0;
-            const isLast = i === chunks.length - 1;
-
-            let chunk = chunks[i];
-
-            if (isFirst) {
-                const offset = rangeStart % CHUNK_SIZE;
-                chunk = chunk.subarray(offset);
-            }
-
-            if (isLast) {
-                const length = (rangeEnd % CHUNK_SIZE) + 1;
-                chunk = chunk.subarray(0, length);
-            }
-
-            result.push(chunk);
-        }
-
-        return result; // array of Buffers
+        return buffers.subarray(offsetStart, offsetEnd + 1);
     };
 
     eventListeners = {};

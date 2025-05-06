@@ -6,9 +6,10 @@
   "type": "module",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
-    "start": "dotenvx run -- node --experimental-strip-types --experimental-sqlite ./src/index.ts",
-    "dev": "dotenvx run -- node --watch --experimental-strip-types --experimental-sqlite ./src/index.ts",
-    "db": "dotenvx run -- node --watch --experimental-strip-types --experimental-sqlite ./src/db.ts"
+    "start": "node --experimental-strip-types --experimental-sqlite ./src/index.ts",
+    "dev": "node --watch --experimental-strip-types --experimental-sqlite ./src/index.ts",
+    "db": "node --watch --experimental-strip-types --experimental-sqlite ./src/db.ts",
+    "clinic": "clinic flame -- node --experimental-strip-types --experimental-sqlite ./src/index.ts"
   },
   "engines": {
     "node": ">=22.9.0"
@@ -44,5 +45,8 @@
     "@types/mime-types": "^2.1.4",
     "@types/node": "^22.7.5",
     "@types/ws": "^8.18.0"
+  },
+  "optionalDependencies": {
+    "bufferutil": "^4.0.9"
   }
 }

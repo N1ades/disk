@@ -11,7 +11,7 @@ export class WebsocketManager {
         }
         console.log('Reconecting websocket');
         this.connect();
-    }, 4000 + 1000)
+    }, 5000 + 2000)
 
     pingTimeout = this.reconectTimeout();
 

@@ -72,7 +72,7 @@
                   </div>
 
                   <div>
-                    <v-btn size="small" icon variant="text" @click="copyLink(item)">
+                    <v-btn size="small" icon variant="text" :disabled="item.isFolder" @click="copyLink(item)">
                       <v-icon>mdi-link-variant</v-icon>
                       <v-tooltip activator="parent" location="top">Copy Link</v-tooltip>
                     </v-btn>
@@ -195,7 +195,8 @@ export default {
     },
 
     copyLink(item) {
-      navigator.clipboard.writeText( location.protocol + '://' + location.host + '/' +item.link)
+      const url = encodeURI(location.protocol + '://' + location.host + '/' +item.link);
+      navigator.clipboard.writeText(url)
         .then(() => {
           this.showSnackbar('Link copied to clipboard')
         })
