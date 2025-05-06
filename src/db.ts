@@ -28,8 +28,6 @@ export class SQLiteKV {
             },
 
             get: (key) => {
-                console.log({key});
-                
                 const result = this.db.prepare(`SELECT value FROM "${name}" WHERE key = ?`).get(key);
                 return result ? JSON.parse(result.value) : null;
             },
@@ -55,28 +53,3 @@ export class SQLiteKV {
 
 
 export const db = new SQLiteKV('./db.sqlite3');
-// // // Usage example
-
-// try {
-//     const kvStore = new SQLiteKV();
-
-//     // Get or create collection
-//     const users = kvStore.collection('users');
-
-//     // Set key-value pair
-//     users.set('john', { name: 'John Doe', age: 30 });
-
-//     // Get value
-//     const user = users.get('john');
-//     console.log('User:', user);
-
-//     // Get all entries
-//     const allUsers = users.getAll();
-//     console.log('All users:', allUsers);
-
-//     // Delete entry
-//     users.delete('john');
-
-// } catch (error) {
-//     console.error('Database error:', error);
-// }

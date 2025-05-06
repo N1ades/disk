@@ -31,7 +31,6 @@ app.use(morgan(':date :remote-addr - :remote-user [:date[clf]] ":method :url HTT
 app.use(express.static('public'));
 
 function heartbeat() {
-  //console.log('pong');
 
   this.isAlive = true;
 }
@@ -41,7 +40,6 @@ const interval = setInterval(function ping() {
     if (ws.isAlive === false) return ws.terminate();
 
     ws.isAlive = false;
-    // console.log(ws.isAlive);
     ws.send('');
     ws.ping();
   });
@@ -49,7 +47,6 @@ const interval = setInterval(function ping() {
 
 // setInterval(function ping() {
 //   wss.clients.forEach(function each(ws) {
-//     console.log(ws.isAlive);
 //   });
 // }, 100);
 
@@ -68,6 +65,7 @@ wss.on('connection', (ws) => {
   ws.on('pong', heartbeat);
 
   const chunkRequest = (chunk) => {
+    
     ws.send(JSON.stringify(chunk));
   }
 
@@ -107,7 +105,9 @@ wss.on('connection', (ws) => {
 
       ws.send(JSON.stringify({
         sessionSecret: ws.transferManager.sessionSecret,
+        code: ws.transferManager.code
       }));
+
     }
 
     const transferManager: TransferManager = ws.transferManager;
@@ -131,9 +131,7 @@ wss.on('connection', (ws) => {
       const decoder = new TextDecoder();
 
       const files: FileClientMeta[] = JSON.parse(decoder.decode(data));
-
-      console.log(files);
-
+      
 
       transferManager.fileManager.addFiles(files);
 
@@ -189,25 +187,22 @@ class UniqueKeyConflictError extends Error {
 app.get('/:code/*', async (req, res: ServerResponse) => {
   try {
 
-    console.log(req.params);
     const path = req.params[0];
     const code = req.params.code;
 
     const transferManager = sessionManager.getTransferManagerByCode(code);
-    console.log(transferManager);
-    
+
 
     if (!transferManager) {
       throw new NotFoundError()
     }
 
-    const file = await transferManager.fileManager.filesMap.get(path);
+    const file = transferManager.fileManager.filesMap.get(path);
+
 
 
 
     if (!file) {
-      console.log('NotFoundError');
-
       throw new NotFoundError()
     }
 
@@ -230,7 +225,7 @@ app.get('/:code/*', async (req, res: ServerResponse) => {
 
         while (current <= file.size - 1) {
           const next = Math.min(current + chunkSize - 1, file.size - 1);
-          const chunk = await transferManager.read(path, current, next);
+          const chunk = await transferManager.chunkManager.read(path, current, next);
 
           if (!res.write(chunk)) {
             // Wait for the 'drain' event before continuing
@@ -286,7 +281,7 @@ app.get('/:code/*', async (req, res: ServerResponse) => {
 
       while (current <= end) {
         const next = Math.min(current + chunkSize - 1, end);
-        const chunk = await transferManager.read(path, current, next);
+        const chunk = await transferManager.chunkManager.read(path, current, next);
 
         if (!res.write(chunk)) {
           // Wait for the 'drain' event before continuing

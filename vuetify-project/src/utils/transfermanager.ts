@@ -14,8 +14,8 @@ const MessageType = {
 type FileClientMeta = {
     path: string;
     size: number;
-    type: string;
-    lastModified: number;
+    // type: string;
+    // lastModified: number;
 };
 
 
@@ -42,38 +42,42 @@ type FileEntry = {
     };
 };
 
+// type FileMeta = {
+//     lastModified: number;
+//     name: string;
+//     size: number;
+//     type: string;
+// };
+
 export class TransferManager {
 
     filesInfo = new Map();
     fileManager = new FileManager();
     ws = new WebsocketManager(`${location.protocol.includes('s') ? 'wss' : 'ws'}://${location.host}`);
 
+
+    sendClientMeta = (payload: FileClientMeta[]) => {
+        const encoder = new TextEncoder();
+        const jsonBytes = encoder.encode(JSON.stringify(payload));
+        const buffer = new Uint8Array(8 + jsonBytes.length);
+
+        buffer.set(new Uint8Array(new BigInt64Array([BigInt(MessageType.FILES_CLIENT_META)]).buffer), 0);
+        buffer.set(jsonBytes, 8);
+        this.ws.send(buffer);
+
+    }
+
     constructor() {
         this.fileManager.addEventListener('change', (files) => {
-            // for (const file of files) {
-            //     file.progress = 0;
-            // }
-
-
-            // console.log('send FILES_CLIENT_META');
-            const jsonPayload = JSON.stringify(files.map((item) => {
+            const payload: FileClientMeta[] = files.map((item) => {
                 return {
                     path: item.path,
                     size: item.file.size,
-                    // type: item.file.type,
-                    // lastModified: item.file.lastModified
                 }
-            }))
+            })
 
-            const encoder = new TextEncoder();
-            const jsonBytes = encoder.encode(jsonPayload);
-            const buffer = new Uint8Array(8 + jsonBytes.length);
+            this.sendClientMeta(payload)
 
-            buffer.set(new Uint8Array(new BigInt64Array([BigInt(MessageType.FILES_CLIENT_META)]).buffer), 0);
-            buffer.set(jsonBytes, 8);
-
-            console.log('ws send meta ' + files.length);
-            this.ws.send(buffer);
         })
 
         this.ws.addEventListener('open', () => {
@@ -94,18 +98,12 @@ export class TransferManager {
             console.log('ws send init');
 
             // totalBytesSent += buffer.byteLength;
+            if (this.filesInfo.size) {
+                this.sendClientMeta(Array.from(this.filesInfo.values()).map(({ path, size }) => ({ path, size })))
+            }
         });
 
-
-
-
         this.ws.addEventListener('message', async (event) => {
-
-            if (event.data.length === 0) {
-                console.log('received ping');
-                return
-            }
-
             if (typeof event.data !== 'string') {
                 console.error('unsupported messageType');
                 console.log(typeof event.data);
@@ -115,6 +113,8 @@ export class TransferManager {
             const data = JSON.parse(event.data);
 
             if (data.sessionSecret) {
+                console.log('sessionSecret', data.sessionSecret);
+
                 this.sessionSecret = data.sessionSecret;
             }
 
@@ -134,7 +134,8 @@ export class TransferManager {
                 return
             }
 
-            if (data.chunkId) {
+            if (typeof data.chunkId === 'number') {
+
                 const chunk = data;
                 const file = this.fileManager.rawFiles.get(chunk.path);
 
@@ -145,8 +146,7 @@ export class TransferManager {
                     combined.set(new Uint8Array(new BigInt64Array([BigInt(MessageType.DATA)]).buffer), 0);
                     combined.set(new Uint8Array(new BigInt64Array([BigInt(chunk.chunkId)]).buffer), 8);
                     combined.set(buffer, 16);
-                    console.log('ws chunk');
-                    ws.send(combined);
+                    this.ws.send(combined);
                     // totalBytesSent += combined.byteLength;
                 };
                 const blob = file.slice(chunk.rangeStart, chunk.rangeEnd === -1 ? undefined : chunk.rangeEnd + 1);

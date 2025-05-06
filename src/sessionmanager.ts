@@ -11,7 +11,9 @@ export class SessionManager {
 
     getTransferManager(sessionSecret): TransferManager {
         if (!this.transferManagers.has(sessionSecret)) {
-            this.transferManagers.set(sessionSecret, new TransferManager(sessionSecret))
+            const transferManager = new TransferManager(sessionSecret);
+            this.transferManagers.set(transferManager.sessionSecret, transferManager)
+            sessionSecret = transferManager.sessionSecret;
         }
 
         return this.transferManagers.get(sessionSecret);

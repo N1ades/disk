@@ -2,11 +2,13 @@ export class WebsocketManager {
     open: boolean;
     url: any;
     eventListeners: {};
-    ws: WebSocket;
+    ws?: WebSocket;
 
     reconectTimeout = () => setTimeout(() => {
-        this.ws.close();
-        delete this.ws;
+        if (this.ws) {
+            this.ws.close();
+            delete this.ws;
+        }
         console.log('Reconecting websocket');
         this.connect();
     }, 4000 + 1000)
@@ -29,7 +31,6 @@ export class WebsocketManager {
         console.log('create WebSocket');
 
         this.ws = new WebSocket(this.url);
-        this.heartbeat();
 
         this.ws.addEventListener("error", (event) => {
             this.heartbeat();
@@ -46,6 +47,7 @@ export class WebsocketManager {
         });
 
         this.ws.addEventListener("message", (event) => {
+            
             if (typeof event.data !== 'string') {
                 console.error('unsupported messageType');
                 return;
@@ -82,11 +84,11 @@ export class WebsocketManager {
     }
 
     close = () => {
+        this.ws.close();
+        delete this.ws;
         clearTimeout(this.pingTimeout);
         this.open = false;
         this.eventListeners = {};
-        this.ws.close();
-        delete this.ws;
 
     }
 
