@@ -150,11 +150,18 @@ export class TransferManager {
                     this.ws.send(combined);
                     // totalBytesSent += combined.byteLength;
                 };
-                const blob = file.slice(chunk.rangeStart, chunk.rangeEnd === -1 ? undefined : chunk.rangeEnd + 1);
+
+                const CHUNK_SIZE = 2_000_000;
+
+                const rangeStart = chunk.chunkIndex * CHUNK_SIZE
+                const rangeEnd = (chunk.chunkIndex + 1) * CHUNK_SIZE
+
+                const blob = file.slice(rangeStart, rangeEnd);
 
                 const fileinfo = this.filesInfo.get(chunk.path)
                 fileinfo.transfered ||= 0
                 fileinfo.transfered += blob.size
+
                 fileinfo.progress = (fileinfo.transfered / fileinfo.size) * 100;
 
                 reader.readAsArrayBuffer(blob);

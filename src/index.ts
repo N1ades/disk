@@ -117,7 +117,7 @@ wss.on('connection', (ws) => {
       return
     }
 
-    type FileClientMeta = {
+     type FileClientMeta = {
       path: string;
       size: number;
       type: string;
@@ -145,6 +145,8 @@ wss.on('connection', (ws) => {
           }
         })
       ));
+      
+      // send not answered data requests again
     }
 
 
@@ -225,7 +227,7 @@ app.get('/:code/*', async (req, res: ServerResponse) => {
 
         while (current <= file.size - 1) {
           const next = Math.min(current + chunkSize - 1, file.size - 1);
-          const chunk = await transferManager.chunkManager.read(path, current, next);
+          const chunk = await transferManager.chunkManager.read(file, current, next);
 
           if (!res.write(chunk)) {
             // Wait for the 'drain' event before continuing
@@ -276,12 +278,12 @@ app.get('/:code/*', async (req, res: ServerResponse) => {
     });
 
     {
-      const chunkSize = 2 * 1024 * 1024; // 2MB
+      const chunkSize = 2_000_000; // 2MB
       let current = start;
 
       while (current <= end) {
         const next = Math.min(current + chunkSize - 1, end);
-        const chunk = await transferManager.chunkManager.read(path, current, next);
+        const chunk = await transferManager.chunkManager.read(file, current, next);
 
         if (!res.write(chunk)) {
           // Wait for the 'drain' event before continuing
