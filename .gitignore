@@ -3,3 +3,6 @@ uploads
 fullchain.pem
 privkey.pem
 .env
+db.sqlite3
+cache
+.clinic

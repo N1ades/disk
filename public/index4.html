@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neo-Noir File Tree</title>
+    <style>
+        html,
+        body {
+            padding: 0;
+            margin: 0;
+
+        }
+
+        body {
+            background-color: #121212;
+            color: #e0e0e0;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            padding: 20px;
+            min-height: 100vh;
+            box-sizing: border-box;
+        }
+
+        .tree {
+            list-style: none;
+            padding-left: 0;
+        }
+
+        .tree li {
+            margin: 4px 0;
+        }
+
+        .folder,
+        .file {
+            display: flex;
+            align-items: center;
+            padding: 4px 8px;
+            border-radius: 4px;
+        }
+
+        .folder:hover,
+        .file:hover {
+            background-color: #1f1f1f;
+        }
+
+        .toggle {
+            cursor: pointer;
+            margin-right: 8px;
+            font-size: 12px;
+            user-select: none;
+        }
+
+        .name {
+            flex: 1;
+            cursor: pointer;
+        }
+
+        .meta {
+            margin-left: auto;
+            font-size: 12px;
+            opacity: 0.7;
+        }
+
+        .actions {
+            margin-left: 8px;
+        }
+
+        .actions button {
+            background: none;
+            border: none;
+            color: #e0e0e0;
+            cursor: pointer;
+            margin-left: 4px;
+            font-size: 12px;
+            opacity: 0.8;
+        }
+
+        .actions button:hover {
+            opacity: 1;
+        }
+    </style>
+</head>
+
+<body>
+    <ul id="fileTree" class="tree"></ul>
+    <script>
+        const randomFiles = [];
+        const folders = ['Assets', 'Assets/Textures', 'Assets/Textures/Environment', 'Assets/Textures/Environment/Nature', 'Assets/Textures/Environment/Nature/Trees'];
+        for (let i = 0; i < 250; i++) {
+            const folder = folders[Math.floor(Math.random() * folders.length)];
+            randomFiles.push({
+                path: `/${folder}/file_${i}.png`,
+                lastModified: Date.now() - Math.floor(Math.random() * 10000000),
+                size: Math.floor(Math.random() * 5000000) + 1000,
+                type: 'image/png',
+                file: {}
+            });
+        }
+
+        const items = randomFiles;
+
+       
+    </script>
+</body>
+
+</html>
