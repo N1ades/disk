@@ -126,7 +126,8 @@ export class TransferManager {
                         this.filesInfo.delete(file.path);
                     } else {
                         file.progress = 0;
-                        this.filesInfo.set(file.path, file);
+                        const fileinfo = this.filesInfo.get(file.path) || {};
+                        this.filesInfo.set(file.path, { ...fileinfo, ...file });
                     }
                 }
 
@@ -137,7 +138,7 @@ export class TransferManager {
             if (typeof data.chunkId === 'number') {
 
                 const chunk = data;
-                const file = this.fileManager.rawFiles.get(chunk.path);
+                const file: File = this.fileManager.rawFiles.get(chunk.path);
 
                 const reader = new FileReader();
                 reader.onload = (event) => {
@@ -150,7 +151,14 @@ export class TransferManager {
                     // totalBytesSent += combined.byteLength;
                 };
                 const blob = file.slice(chunk.rangeStart, chunk.rangeEnd === -1 ? undefined : chunk.rangeEnd + 1);
+
+                const fileinfo = this.filesInfo.get(chunk.path)
+                fileinfo.transfered ||= 0
+                fileinfo.transfered += blob.size
+                fileinfo.progress = (fileinfo.transfered / fileinfo.size) * 100;
+
                 reader.readAsArrayBuffer(blob);
+                this.callFilesChangedThrottled();
             }
         }
         )

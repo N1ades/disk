@@ -15,18 +15,14 @@ export class ChunkManager {
 
 
     read = (path: string, rangeStart: number, rangeEnd: number) => {
-
         return new Promise<void>((resolve, reject) => {
             const { chunkId } = this.createChunk(resolve);
-
             this.eventListeners["chunk"]?.forEach((listener) => listener({
                 path,
                 chunkId,
                 rangeStart,
                 rangeEnd
             }));
-
-
         })
     }
 
