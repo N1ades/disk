@@ -25,8 +25,6 @@ export class TransferManager {
         const code = existsCode ?? nanoid();
 
         if (!existsCode) {
-            console.log('codeSecret.set', code, secret);
-            
             codeSecret.set(code, secret);
             secretCode.set(secret, code);
         }

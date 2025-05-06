@@ -37,7 +37,7 @@
             Clear All
           </v-btn>
 
-          <v-btn style="margin-left: auto;" prepend-icon="mdi-cast" @click="clearFiles" :disabled="!!dropProgress || files.length >= 1">
+          <v-btn style="margin-left: auto;" prepend-icon="mdi-cast" @click="clearFiles" :disabled="true || !!dropProgress || files.length >= 1">
             Share Screen And Sound 
           </v-btn>
         </div>

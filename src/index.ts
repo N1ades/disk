@@ -23,10 +23,9 @@ const uploadsDir = path.join(__dirname, 'uploads');
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
 app.use(morgan(':date :remote-addr - :remote-user [:date[clf]] ":method :url HTTP/:http-version" :status :res[content-length] ":referrer" ":user-agent :res[header] :req[header] :response-time ms"'));
-app.use(express.static('public'));
+app.use(express.static('client/dist'));
 
 function heartbeat() {
-
   this.isAlive = true;
 }
 

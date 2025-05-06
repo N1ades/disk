@@ -113,8 +113,6 @@ export class TransferManager {
             const data = JSON.parse(event.data);
 
             if (data.sessionSecret) {
-                console.log('sessionSecret', data.sessionSecret);
-
                 this.sessionSecret = data.sessionSecret;
             }
 
