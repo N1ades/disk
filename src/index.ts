@@ -6,10 +6,6 @@ import morgan from 'morgan';
 import path from 'path';
 import mime from 'mime-types';
 import { createServer } from './ssl.ts'
-import { nanoid } from 'nanoid'
-import { FileObject } from './file.ts';
-import { ChunkManager } from './chunk.ts';
-import { db } from './db.ts';
 import { SessionManager } from './sessionmanager.ts';
 import { TransferManager } from './transfermanager.ts';
 
@@ -26,7 +22,7 @@ const uploadsDir = path.join(__dirname, 'uploads');
 
 
 
-const filesMap = new Map<string, FileObject>();
+// const filesMap = new Map<string, FileObject>();
 
 // Создаем директории при необходимости
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
@@ -62,7 +58,6 @@ wss.on('close', function close() {
 });
 
 // WebSocket обработчик
-const chunkManager = new ChunkManager()
 
 const sessionManager = new SessionManager();
 
@@ -71,6 +66,14 @@ wss.on('connection', (ws) => {
   ws.isAlive = true;
   ws.on('error', console.error);
   ws.on('pong', heartbeat);
+
+  const chunkRequest = (chunk) => {
+    ws.send(JSON.stringify(chunk));
+  }
+
+  ws.on('close', () => {
+    ws.transferManager?.chunkManager.removeEventListener('chunk', chunkRequest);
+  })
 
   ws.on('message', async (message) => {
 
@@ -100,6 +103,7 @@ wss.on('connection', (ws) => {
       }
 
       ws.transferManager ??= sessionManager.getTransferManager(sessionSecret);
+      ws.transferManager.chunkManager.addEventListener('chunk', chunkRequest);
 
       ws.send(JSON.stringify({
         sessionSecret: ws.transferManager.sessionSecret,
@@ -128,6 +132,9 @@ wss.on('connection', (ws) => {
 
       const files: FileClientMeta[] = JSON.parse(decoder.decode(data));
 
+      console.log(files);
+
+
       transferManager.fileManager.addFiles(files);
 
       ws.send(JSON.stringify(
@@ -135,6 +142,7 @@ wss.on('connection', (ws) => {
           return {
             path: file.path,
             link: `${transferManager.code}/${file.path}`,
+            size: file.size,
             // deleted: false
           }
         })
@@ -146,14 +154,14 @@ wss.on('connection', (ws) => {
       const data = message.slice(8);
       const decoder = new TextDecoder();
 
-      const files: FileClientMeta[] = JSON.parse(decoder.decode(data));
+      const filesToRemove: string[] = JSON.parse(decoder.decode(data));
 
-      transferManager.fileManager.deleteFiles(files);
+      transferManager.fileManager.deleteFiles(filesToRemove);
 
       ws.send(JSON.stringify(
-        files.map((file) => {
+        filesToRemove.map((filePath) => {
           return {
-            path: file.path,
+            path: filePath,
             deleted: true
           }
         })
@@ -161,13 +169,13 @@ wss.on('connection', (ws) => {
     }
 
 
-    // if (messageType === MessageType.DATA) {
-    //   // Обработка бинарных данных
-    //   const chunkId = Number(message.readBigInt64LE(8));
-    //   const data = message.slice(16);
+    if (messageType === MessageType.DATA) {
+      // Обработка бинарных данных
+      const chunkId = Number(message.readBigInt64LE(8));
+      const data = message.slice(16);
 
-    //   chunkManager.setData(chunkId, data);
-    // }
+      transferManager.chunkManager.setData(chunkId, data);
+    }
   });
 });
 
@@ -178,48 +186,51 @@ class UniqueKeyConflictError extends Error {
   code = 'ENOENT'
 }
 
-app.get('/files/:code/:filename', async (req, res: ServerResponse) => {
+app.get('/:code/*', async (req, res: ServerResponse) => {
   try {
-    const filename = req.params.filename;
-    const code = req.params.code;
-    // console.log(filename);
-    const secret = db.collection('secret').get(code);
 
-    if (!filesMap.has(secret)) {
+    console.log(req.params);
+    const path = req.params[0];
+    const code = req.params.code;
+
+    const transferManager = sessionManager.getTransferManagerByCode(code);
+    console.log(transferManager);
+    
+
+    if (!transferManager) {
       throw new NotFoundError()
     }
-    const file = filesMap.get(secret) as FileObject
 
-    // const filePath = path.join(__dirname, 'uploads', filename);
+    const file = await transferManager.fileManager.filesMap.get(path);
 
-    // Get file stats
-    // const stats = await fs.promises.stat(filePath);
-    // const fileSize = stats.size;
-    const fileSize = file.size;
+
+
+    if (!file) {
+      console.log('NotFoundError');
+
+      throw new NotFoundError()
+    }
+
     let range = req.headers.range;
 
-    console.log(new Date(), req.headers);
-
-
-
     // Determine Content-Type
-    const contentType = mime.lookup(filename) || 'application/octet-stream';
+    const contentType = mime.lookup(path) || 'application/octet-stream';
 
     if (!range) {
       // Send full file if no range header
       res.writeHead(200, {
         'Content-Type': contentType,
-        'Content-Length': fileSize,
+        'Content-Length': file.size,
         'Accept-Ranges': 'bytes'
       });
 
       {
-        const chunkSize = 3 * 1024 * 1024; // 3MB
+        const chunkSize = 2 * 1024 * 1024; // 2MB
         let current = 0;
 
-        while (current <= fileSize - 1) {
-          const next = Math.min(current + chunkSize - 1, fileSize - 1);
-          const chunk = await file.read(current, next);
+        while (current <= file.size - 1) {
+          const next = Math.min(current + chunkSize - 1, file.size - 1);
+          const chunk = await transferManager.read(path, current, next);
 
           if (!res.write(chunk)) {
             // Wait for the 'drain' event before continuing
@@ -236,44 +247,38 @@ app.get('/files/:code/:filename', async (req, res: ServerResponse) => {
     }
 
     // Parse Range header (bytes=start-end)
-    // console.log({range});
     let start, end;
 
     if (range) {
       const [startStr, endStr] = range.replace(/bytes=/, '').split('-');
       start = parseInt(startStr, 10);
-      end = endStr ? parseInt(endStr, 10) : fileSize - 1;
+      end = endStr ? parseInt(endStr, 10) : file.size - 1;
     }
     else {
       start = 0;
-      end = fileSize - 1;
+      end = file.size - 1;
     }
 
     // Validate range
-    if (start > end || end >= fileSize) {
+    if (start > end || end >= file.size) {
       res.writeHead(416, {
-        'Content-Range': `bytes */${fileSize}`
+        'Content-Range': `bytes */${file.size}`
       });
       return res.end();
     }
-    // const MAX_CHUNK_SIZE = 1000000;
-    // end = Math.min(end, fileSize - 1, start + MAX_CHUNK_SIZE);
 
     // Adjust end if out of bounds
-    end = Math.min(end, fileSize - 1);
+    end = Math.min(end, file.size - 1);
 
     const contentLength = end - start + 1;
 
     // Send partial content
     res.writeHead(206, {
-      'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+      'Content-Range': `bytes ${start}-${end}/${file.size}`,
       'Content-Length': contentLength,
       'Content-Type': contentType,
       'Accept-Ranges': 'bytes'
     });
-
-    // res.write(await file.read(start, end));
-    // filesMap.delete(secret);
 
     {
       const chunkSize = 2 * 1024 * 1024; // 2MB
@@ -281,7 +286,7 @@ app.get('/files/:code/:filename', async (req, res: ServerResponse) => {
 
       while (current <= end) {
         const next = Math.min(current + chunkSize - 1, end);
-        const chunk = await file.read(current, next);
+        const chunk = await transferManager.read(path, current, next);
 
         if (!res.write(chunk)) {
           // Wait for the 'drain' event before continuing

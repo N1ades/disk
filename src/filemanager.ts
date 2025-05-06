@@ -1,8 +1,4 @@
-import { ChunkManager } from "./chunk.ts";
 import { db } from "./db.ts";
-
-
-
 
 type FileClientMeta = {
     path: string;
@@ -15,7 +11,7 @@ const files = db.collection('files');
 
 export class FileManager {
 
-    filesMap = new Map();
+    filesMap = new Map<string, FileClientMeta>();
 
     addFiles = (files: FileClientMeta[]) => {
         for (const file of files) {
@@ -23,9 +19,9 @@ export class FileManager {
         }
     }
 
-    deleteFiles = (files: FileClientMeta[]) => {
-        for (const file of files) {
-            this.filesMap.delete(file.path);
+    deleteFiles = (files: string[]) => {
+        for (const filePath of files) {
+            this.filesMap.delete(filePath);
         }
     }
 }

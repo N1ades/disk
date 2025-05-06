@@ -37,7 +37,7 @@
             Clear All
           </v-btn>
 
-          <v-btn style="margin-left: auto;" prepend-icon="mdi-cast" @click="clearFiles" :disabled="dropProgress || files.length >= 1">
+          <v-btn style="margin-left: auto;" prepend-icon="mdi-cast" @click="clearFiles" :disabled="!!dropProgress || files.length >= 1">
             Share Screen And Sound 
           </v-btn>
         </div>
@@ -56,17 +56,17 @@
                   :style="{ position: 'absolute', width: '100%', height: '100%', top: 0, left: 0 }"></v-progress-linear>
 
                 <div class="d-flex align-center pa-4" style="position: relative; z-index: 1">
-                  <v-avatar class="me-4" :color="getFileColor(item.file.name)" size="40">
+                  <v-avatar class="me-4" :color="getFileColor(item.path)" size="40">
                     <v-icon dark>{{ getFileIcon(item) }}</v-icon>
                   </v-avatar>
 
                   <div class="flex-grow-1">
                     <div class="text-subtitle-1 text-truncate">
-                      {{ item.file.name }}
+                      {{ item.path.split('/').pop() }}
                     </div>
                     <div class="text-caption">
 
-                      {{ formatFileSize(item.file.size) }} • <span v-if="item.count">{{ item.count }} files •</span> {{
+                      {{ formatFileSize(item.size) }} • <span v-if="item.count">{{ item.count }} files •</span> {{
                         Math.round(item.progress / (item.count || 1)) }}% transfered
                     </div>
                   </div>
@@ -146,7 +146,7 @@ export default {
             exists = { size: 0, path, depth, progress: 0, count: 0 }
             folderMap.set(path, exists);
           }
-          exists.size += item.file.size;
+          exists.size += item.size;
           exists.progress += item.progress;
           exists.count++;
           depth += 1;
@@ -162,14 +162,12 @@ export default {
           isFolder: true,
           depth: folder.depth,
           count: folder.count,
-          file: {
-            name: folder.path.split('/').pop(),
-            size: folder.size,
-          }
+          size: folder.size,
         }
       })
 
       this.files = [...folderObjects, ...files].toSorted((a, b) => a.path.depth - b.path.depth || b.isFolder - a.isFolder || a.path.localeCompare(b.path));
+
     },
 
     async onDrop(event) {
@@ -179,25 +177,25 @@ export default {
     },
 
     async onFileSelected(event) {
-      this.transferManager.fileManager.fileChangeEventHandler(event, (progress) => { this.dropProgress = progress });
+      await this.transferManager.fileManager.fileChangeEventHandler(event, (progress) => { this.dropProgress = progress });
       this.dropProgress = 0;
     },
 
     async onFolderSelected(event) {
-      this.transferManager.fileManager.fileChangeEventHandler(event, (progress) => { this.dropProgress = progress });
+      await this.transferManager.fileManager.fileChangeEventHandler(event, (progress) => { this.dropProgress = progress });
       this.dropProgress = 0;
     },
 
     removeFile(item) {
-      this.transferManager.fileManager.removeFile(item);
+      this.transferManager.removeFile(item.path);
     },
 
     clearFiles() {
-      this.transferManager.fileManager.clearFiles();
+      this.transferManager.clearFiles();
     },
 
     copyLink(item) {
-      navigator.clipboard.writeText(item.link)
+      navigator.clipboard.writeText( location.protocol + '://' + location.host + '/' +item.link)
         .then(() => {
           this.showSnackbar('Link copied to clipboard')
         })
@@ -222,8 +220,7 @@ export default {
         return 'mdi-folder-open';
       }
 
-      const filename = item.file.name;
-      const extension = filename.split('.').pop().toLowerCase()
+      const extension = item.path.split('.').pop().toLowerCase()
 
       const iconMap = {
         folder: 'mdi-folder-open',

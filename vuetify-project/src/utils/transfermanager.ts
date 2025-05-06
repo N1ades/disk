@@ -1,14 +1,16 @@
 import { FileManager } from "./filemanager.ts";
 import { WebsocketManager } from "./websocketmanager.ts";
+import { throttle } from 'throttle-debounce';
+
 
 const MessageType = {
     INIT: 0,
     DATA: 1,
     REQUEST: 2,
     FILES: 3,
-    FILES_CLIENT_META: 4
+    FILES_CLIENT_META: 4,
+    FILES_CLIENT_DELETION: 5
 };
-
 type FileClientMeta = {
     path: string;
     size: number;
@@ -42,24 +44,24 @@ type FileEntry = {
 
 export class TransferManager {
 
+    filesInfo = new Map();
+    fileManager = new FileManager();
+    ws = new WebsocketManager(`${location.protocol.includes('s') ? 'wss' : 'ws'}://${location.host}`);
+
     constructor() {
-        this.fileManager = new FileManager();
-
         this.fileManager.addEventListener('change', (files) => {
-            const array = Array.from(files.values());
-            for (const file of array) {
-                file.progress = 50;
-            }
-            this.eventListeners["change"]?.forEach((listener) => listener(array));
-            console.log(array);
+            // for (const file of files) {
+            //     file.progress = 0;
+            // }
 
 
+            // console.log('send FILES_CLIENT_META');
             const jsonPayload = JSON.stringify(files.map((item) => {
                 return {
-                    path: item.info.path,
+                    path: item.path,
                     size: item.file.size,
-                    type: item.file.type,
-                    lastModified: item.file.lastModified
+                    // type: item.file.type,
+                    // lastModified: item.file.lastModified
                 }
             }))
 
@@ -69,13 +71,10 @@ export class TransferManager {
 
             buffer.set(new Uint8Array(new BigInt64Array([BigInt(MessageType.FILES_CLIENT_META)]).buffer), 0);
             buffer.set(jsonBytes, 8);
-            console.log('send init');
 
+            console.log('ws send meta ' + files.length);
             this.ws.send(buffer);
         })
-
-
-        this.ws = new WebsocketManager(`${location.protocol.includes('s') ? 'wss' : 'ws'}://${location.host}`);
 
         this.ws.addEventListener('open', () => {
             console.log('open');
@@ -92,65 +91,103 @@ export class TransferManager {
             console.log('send init');
 
             this.ws.send(buffer);
+            console.log('ws send init');
 
             // totalBytesSent += buffer.byteLength;
         });
 
 
+
+
         this.ws.addEventListener('message', async (event) => {
+
             if (event.data.length === 0) {
                 console.log('received ping');
-
                 return
             }
 
-            console.log(typeof event.data);
+            if (typeof event.data !== 'string') {
+                console.error('unsupported messageType');
+                console.log(typeof event.data);
+                return
+            }
 
-            if (typeof event.data === 'string') {
-                const data = JSON.parse(event.data);
+            const data = JSON.parse(event.data);
 
-                if (data.sessionSecret) {
-                    this.sessionSecret = data.sessionSecret;
-                }
+            if (data.sessionSecret) {
+                this.sessionSecret = data.sessionSecret;
+            }
 
-                if (data.files) {
-                    for (const file of data.files) {
-                        console.log(`📄 ${file.name} - Live`);
-                        console.log('downloadLink:', new URL(file.downloadLink, window.location.protocol + '//' + window.location.host).toString());
+            if (Array.isArray(data)) {
+                for (const file of data) {
+
+                    if (file.deleted) {
+                        this.fileManager.rawFiles.delete(file.path);
+                        this.filesInfo.delete(file.path);
+                    } else {
+                        file.progress = 0;
+                        this.filesInfo.set(file.path, file);
                     }
                 }
 
-                // if (data.filename) {
-                //     const chunk = data;
-                //     const file = files.find(({ filename }) => filename === chunk.filename);
-
-                //     const reader = new FileReader();
-                //     reader.onload = (e) => {
-                //         const buffer = new Uint8Array(e.target.result);
-                //         const combined = new Uint8Array(8 + 8 + buffer.byteLength);
-                //         combined.set(new Uint8Array(new BigInt64Array([BigInt(MessageType.DATA)]).buffer), 0);
-                //         combined.set(new Uint8Array(new BigInt64Array([BigInt(chunk.chunkId)]).buffer), 8);
-                //         combined.set(buffer, 16);
-                //         ws.send(combined);
-                //         // totalBytesSent += combined.byteLength;
-                //     };
-                //     const blob = file.slice(chunk.rangeStart, chunk.rangeEnd === -1 ? undefined : chunk.rangeEnd + 1);
-                //     reader.readAsArrayBuffer(blob);
-                // }
-            } else {
-                console.error('unsupported messageType');
+                this.callFilesChangedThrottled();
+                return
             }
-        })
+
+            if (data.chunkId) {
+                const chunk = data;
+                const file = this.fileManager.rawFiles.get(chunk.path);
+
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    const buffer = new Uint8Array(event.target.result);
+                    const combined = new Uint8Array(8 + 8 + buffer.byteLength);
+                    combined.set(new Uint8Array(new BigInt64Array([BigInt(MessageType.DATA)]).buffer), 0);
+                    combined.set(new Uint8Array(new BigInt64Array([BigInt(chunk.chunkId)]).buffer), 8);
+                    combined.set(buffer, 16);
+                    console.log('ws chunk');
+                    ws.send(combined);
+                    // totalBytesSent += combined.byteLength;
+                };
+                const blob = file.slice(chunk.rangeStart, chunk.rangeEnd === -1 ? undefined : chunk.rangeEnd + 1);
+                reader.readAsArrayBuffer(blob);
+            }
+        }
+        )
 
     }
+
+
+    removeFile = (path: string) => {
+        const filesToRemove = Array.from(this.filesInfo.keys()).filter((key: string) => key === path || key.startsWith(path + `/`));
+
+        const jsonPayload = JSON.stringify(filesToRemove)
+
+        const encoder = new TextEncoder();
+        const jsonBytes = encoder.encode(jsonPayload);
+        const buffer = new Uint8Array(8 + jsonBytes.length);
+
+        buffer.set(new Uint8Array(new BigInt64Array([BigInt(MessageType.FILES_CLIENT_DELETION)]).buffer), 0);
+        buffer.set(jsonBytes, 8);
+
+
+        this.ws.send(buffer);
+    }
+
+
+    callFilesChangedThrottled = throttle(1000, () => {
+        const filess = Array.from(this.filesInfo.values())
+
+        this.eventListeners["change"]?.forEach((listener) => listener(filess));
+    })
 
     destroy = () => {
         this.ws.close();
     }
 
 
-    eventListeners = {};
-    addEventListener = (type, listener, options) => {
+    eventListeners: any = {};
+    addEventListener = (type: string, listener: Function) => {
         // this.eventListeners[type] = listener;
         this.eventListeners[type] ||= [];
         this.eventListeners[type].push(listener);

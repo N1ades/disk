@@ -4,12 +4,14 @@ export class WebsocketManager {
     eventListeners: {};
     ws: WebSocket;
 
-    pingTimeout = setTimeout(() => {
+    reconectTimeout = () => setTimeout(() => {
         this.ws.close();
         delete this.ws;
         console.log('Reconecting websocket');
         this.connect();
-    }, 4000 + 1000);
+    }, 4000 + 1000)
+
+    pingTimeout = this.reconectTimeout();
 
     constructor(url) {
         this.open = true;
@@ -20,13 +22,12 @@ export class WebsocketManager {
 
     heartbeat = () => {
         clearTimeout(this.pingTimeout);
-
-        this.pingTimeout
+        this.pingTimeout = this.reconectTimeout();
     }
 
     connect = () => {
         console.log('create WebSocket');
-        
+
         this.ws = new WebSocket(this.url);
         this.heartbeat();
 
@@ -61,6 +62,7 @@ export class WebsocketManager {
         this.ws.addEventListener("close", (event) => {
             console.log('close');
             if (this.open) {
+                console.log('wait for reconnect');
                 return // wait for reconnect
             }
 

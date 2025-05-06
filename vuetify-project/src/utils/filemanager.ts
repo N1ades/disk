@@ -1,3 +1,6 @@
+import { throttle } from 'throttle-debounce';
+
+
 const immediate = (fn) => new Promise<void>(async (resolve, reject) => {
     setTimeout(async () => {
         try {
@@ -9,13 +12,13 @@ const immediate = (fn) => new Promise<void>(async (resolve, reject) => {
     }, 0);
 })
 
-const debounce = (func, delay) => {
-    let timeoutId;
-    return (...args) => {
-        clearTimeout(timeoutId);
-        timeoutId = setTimeout(() => func(...args), delay);
-    };
-};
+// const debounce = (func, delay) => {
+//     let timeoutId;
+//     return (...args) => {
+//         clearTimeout(timeoutId);
+//         timeoutId = setTimeout(() => func(...args), delay);
+//     };
+// };
 
 const getAllFileEntries = async (dataTransferItemList) => {
     let fileEntries = [];
@@ -25,15 +28,42 @@ const getAllFileEntries = async (dataTransferItemList) => {
     for (let i = 0; i < dataTransferItemList.length; i++) {
         // Note webkitGetAsEntry a non-standard feature and may change
         // Usage is necessary for handling directories
-        queue.push(dataTransferItemList[i].webkitGetAsEntry());
+
+        const entry = await dataTransferItemList[i].webkitGetAsEntry();
+
+        if (!entry) {
+            let fallbackFile;
+            try {
+                fallbackFile = await dataTransferItemList[i].getAsFile()
+            } catch (error) {
+                console.error(error);
+            }
+
+            if (!fallbackFile) {
+                const confirmation = confirm('Oops! Something went wrong. Please make sure the file is accessible and that you have read permissions. Continue?');
+                if (!confirmation) {
+                    break
+                }
+
+                continue
+            }
+
+
+            if (fallbackFile.size === 0 && !confirm(
+                'The dragged file has zero size. This can happen if you drag a folder directly from an unextracted archive. Please press "Cancel" and extract the archive first or drag entire archive.\n\nDo you want to continue and add this as an empty file?'
+            )) { continue }
+
+            fileEntries.push(fallbackFile);
+
+            continue;
+        }
+
+
+        queue.push(entry);
     }
     while (queue.length > 0) {
         let entry = queue.shift();
         if (entry.isFile) {
-            // const file = await new Promise((resolve, reject) => { entry.file(resolve, reject); });
-            // file.webkitRelativePath = entry.webkitRelativePath;
-            // console.log(file);
-
             fileEntries.push(entry);
         } else if (entry.isDirectory) {
             queue.push(...await readAllDirectoryEntries(entry.createReader()));
@@ -70,12 +100,11 @@ const readEntriesPromise = async (directoryReader) => {
 
 
 export class FileManager {
-    files = new Map();
-    filesInfo = new Map();
-    eventListeners = {};
+    changedFiles = new Map();
+    rawFiles = new Map();
+    // filesInfo = new Map();
 
     addFile = async (entry) => {
-        // console.log('add file', entry);
 
         const file = entry?.file ? await new Promise((resolve, reject) => {
             entry?.file(resolve, reject)
@@ -84,7 +113,7 @@ export class FileManager {
         const path = entry.fullPath || entry.webkitRelativePath || file.webkitRelativePath || file.fullPath || file.name;
 
         const meta = {
-            path: 'All/' + path.replace(/^\/+/, ''),
+            path: 'files/' + path.replace(/^\/+/, ''),
             info: {
                 name: path.split('/').pop(),
                 lastModified: file.lastModified,
@@ -93,35 +122,52 @@ export class FileManager {
             },
             file: file,
         }
+        this.rawFiles.set(meta.path, file);
 
-        const metaHash = JSON.stringify(meta.info)
-        if (this.files.has(meta.path)) {
-            this.files.delete(meta.path);
-            this.filesInfo.delete(metaHash)
-        }
+        // const metaHash = JSON.stringify(meta.info)
+        // if (this.files.has(meta.path)) {
+        //     this.files.delete(meta.path);
+        //     // this.filesInfo.delete(metaHash)
+        // }
 
-        const existsFileInfo = this.filesInfo.get(metaHash)
-        if (existsFileInfo) {
-            this.files.delete(existsFileInfo.path);
-            this.filesInfo.delete(metaHash)
-        }
+        // const existsFileInfo = this.filesInfo.get(metaHash)
+        // if (existsFileInfo) {
+        //     this.files.delete(existsFileInfo.path);
+        //     this.filesInfo.delete(metaHash)
+        // }
 
-        this.files.set(meta.path, meta);
-        this.filesInfo.set(JSON.stringify(meta.info), meta);
+        this.changedFiles.set(meta.path, meta);
+
         this.updateList();
     }
 
-    updateList = debounce(async () => {
-        this.eventListeners["change"]?.forEach((listener) => listener(this.files));
-    }, 100);
+    // deleteFile = async (path) => {
+    //     this.files.delete(path);
+    //     // this.updateList();
+    // }
+
+    // linkFile = async (path, link) => {
+    //     const file = this.files.get(path);
+    //     if (!file) return
+    //     file.link = link;
+    //     // this.updateList();
+    // }
+
+    updateList = throttle(1000, async () => {
+        const changedFiles = Array.from(this.changedFiles.values())
+        this.changedFiles.clear();
+
+        this.eventListeners["change"]?.forEach((listener) => {
+            listener(changedFiles)
+        });
+    });
 
 
 
     dropzoneEventHandler = async (event, progressCallback) => {
         event.preventDefault();
-        immediate(() => progressCallback(0.01))
+        progressCallback(0.01);
         let files = await getAllFileEntries(event.dataTransfer.items);
-        console.log(files.length);
         let i = 0;
         for (const file of files) {
             i++;
@@ -135,8 +181,8 @@ export class FileManager {
 
     fileChangeEventHandler = async (event, progressCallback) => {
         event.preventDefault();
+        progressCallback(0.01);
         let files = Array.from(event.currentTarget.files);
-        immediate(() => progressCallback(0.01))
 
         try {
             let i = 0;
@@ -152,7 +198,8 @@ export class FileManager {
         }
     }
 
-    addEventListener = (type, listener, options) => {
+    eventListeners: any = {};
+    addEventListener = (type: string, listener: () => any) => {
         // this.eventListeners[type] = listener;
         this.eventListeners[type] ||= [];
         this.eventListeners[type].push(listener);

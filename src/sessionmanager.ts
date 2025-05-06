@@ -1,4 +1,4 @@
-import { TransferManager } from "./transfermanager";
+import { codeSecret, TransferManager } from "./transfermanager.ts";
 
 // управление сессиями трансфера файлов пользователей
 export class SessionManager {
@@ -13,6 +13,12 @@ export class SessionManager {
         if (!this.transferManagers.has(sessionSecret)) {
             this.transferManagers.set(sessionSecret, new TransferManager(sessionSecret))
         }
+
+        return this.transferManagers.get(sessionSecret);
+    }
+
+    getTransferManagerByCode(code): TransferManager {
+        const sessionSecret = codeSecret.get(code);
 
         return this.transferManagers.get(sessionSecret);
     }

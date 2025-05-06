@@ -56,6 +56,14 @@ export default defineConfig({
   },
   server: {
     port: 3000,
+    proxy: {
+      // Match all paths that contain `/someid/files/`
+      '^/([^/]+)/files/.*$': {
+        target: 'http://localhost:8099',
+        changeOrigin: true,
+        rewrite: (path) => path,
+      },
+    },
   },
   css: {
     preprocessorOptions: {

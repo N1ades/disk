@@ -1,8 +1,10 @@
 import { nanoid } from "nanoid";
-import { db } from "./db";
-import { FileManager } from "./filemanager";
+import { db } from "./db.ts";
+import { FileManager } from "./filemanager.ts";
+import { ChunkManager } from "./chunk.ts";
+import WebSocket from "ws";
 
-const codeSecret = db.collection('secretByCode');
+export const codeSecret = db.collection('secretByCode');
 const secretCode = db.collection('codeBySecret');
 
 // управление трансфером файлов и файлами пользователя
@@ -15,7 +17,7 @@ export class TransferManager {
     code: string;
 
     fileManager: FileManager;
-
+    chunkManager: ChunkManager;
 
     constructor(sessionSecret: string) {
         const existsCode = sessionSecret && secretCode.get(sessionSecret);
@@ -23,28 +25,17 @@ export class TransferManager {
         const code = existsCode ?? nanoid();
 
         if (!existsCode) {
+            console.log('codeSecret.set', code, secret);
+            
             codeSecret.set(code, secret);
             secretCode.set(secret, code);
         }
-
+        
+        this.code = code;
         this.sessionSecret = secret;
         this.fileManager = new FileManager();
+        this.chunkManager = new ChunkManager();
     }
 
-
-
-
-    // addFiles(files){
-
-    //     // const existsFiles = files.get(this.sessionSecret) || [];
-
-    //     // new Map()
-
-    //     // files.set(this.sessionSecret), ;
-    // }
-
-
-
-
-
+    
 }
