@@ -103,7 +103,9 @@
 </template>
 
 <script>
+import { BackgroundAudioKeeper } from "./utils/backgroundAudioKeeper.ts";
 import { TransferManager } from "./utils/transfermanager.ts";
+import NoSleep from '@zakj/no-sleep';
 
 export default {
   data() {
@@ -113,20 +115,38 @@ export default {
       snackbar: false,
       snackbarText: '',
       dropProgress: 0,
-      openFoldersMap: new Map()
+      openFoldersMap: new Map(),
+      wakeLockEnabled: false
     }
   },
   beforeMount() {
     this.transferManager = new TransferManager();
     this.transferManager.files = this.files;
     this.transferManager.addEventListener('change', this.filesChanged)
-
+    this.noSleep = new NoSleep();
+    this.backgroundAudioKeeper = new BackgroundAudioKeeper();
   },
   beforeUnmount() {
-    this.transferManager.destroy()
+    this.wakeLockSwitch(false);
+    this.transferManager.destroy();
+    this.backgroundAudioKeeper.destroy();
   },
 
   methods: {
+    wakeLockSwitch(enable){
+      if(!this.wakeLockEnabled && enable){
+        this.noSleep.enable();
+        // this.backgroundAudioKeeper.start();
+        console.log('wakeLock enable');
+        
+      }
+      if(this.wakeLockEnabled && !enable){
+        this.noSleep.disable();
+        // this.backgroundAudioKeeper.stop();
+        console.log('wakeLock disable');
+      }
+      this.wakeLockEnabled = enable;
+    },
     filesChanged(files) {
       const folderMap = new Map();
       for (const item of files) {
@@ -168,20 +188,26 @@ export default {
 
       this.files = [...folderObjects, ...files].toSorted((a, b) => a.path.depth - b.path.depth || b.isFolder - a.isFolder || a.path.localeCompare(b.path));
 
+      if (this.files.length === 0) {
+        this.wakeLockSwitch(false);
+      }
     },
 
     async onDrop(event) {
+      this.wakeLockSwitch(true);
       this.isDragging = false
       await this.transferManager.fileManager.dropzoneEventHandler(event, (progress) => { this.dropProgress = progress });
       this.dropProgress = 0;
     },
 
     async onFileSelected(event) {
+      this.wakeLockSwitch(true);
       await this.transferManager.fileManager.fileChangeEventHandler(event, (progress) => { this.dropProgress = progress });
       this.dropProgress = 0;
     },
 
     async onFolderSelected(event) {
+      this.wakeLockSwitch(true);
       await this.transferManager.fileManager.fileChangeEventHandler(event, (progress) => { this.dropProgress = progress });
       this.dropProgress = 0;
     },
@@ -195,6 +221,7 @@ export default {
     },
 
     copyLink(item) {
+      this.wakeLockSwitch(true);
       const url = encodeURI(location.protocol + '://' + location.host + '/' +item.link);
       navigator.clipboard.writeText(url)
         .then(() => {
