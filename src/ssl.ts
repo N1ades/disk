@@ -39,14 +39,19 @@ export const createServer = () => {
 
   const wsServers = []
   const app = express();
-  const server = http.createServer(app)
 
-  server.listen(process.env.PORT, process.env.HOST, () => {
-    console.log(`Server running on port http://${process.env.HOST}:${process.env.PORT}`);
-  });
+  if (process.env.PORT) {
+    const server = http.createServer(app)
 
-  const wss = new WebSocketServer({ server });
-  wsServers.push(wss);
+    server.listen(process.env.PORT, HOST, () => {
+      console.log(`Server running on port http://${process.env.HOST}:${process.env.PORT}`);
+    });
+
+    const wss = new WebSocketServer({ server });
+    wsServers.push(wss);
+  }
+
+
   if (SSL_KEY_PATH && SSL_CERT_PATH) {
     const privateKey = readFileSync(SSL_KEY_PATH, 'utf8');
     const certificate = readFileSync(SSL_CERT_PATH, 'utf8');

@@ -9,20 +9,25 @@ import mime from 'mime-types';
 import { createServer } from './ssl.ts'
 import { SessionManager } from './sessionmanager.ts';
 import { TransferManager } from './transfermanager.ts';
+import cors from 'cors';
 
-
-const __dirname = import.meta.dirname;
+// const __dirname = import.meta.dirname;
 const { wss, app } = createServer();
-//  // Используем один сервер для HTTP и WS
 
-const uploadsDir = path.join(__dirname, 'uploads');
-
-// const filesMap = new Map<string, FileObject>();
-
-// Создаем директории при необходимости
-if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+// Use the custom CORS middleware
+app.use(cors({
+  origin: process.env.ORIGIN ?? true,
+  optionsSuccessStatus: 200 // some legacy browsers (IE11, various SmartTVs) choke on 204
+}));
 
 app.use(morgan(':date :remote-addr - :remote-user [:date[clf]] ":method :url HTTP/:http-version" :status :res[content-length] ":referrer" ":user-agent :res[header] :req[header] :response-time ms"'));
+
+app.use('/assets', express.static('client/dist/assets', {
+  maxAge: '1y', // cache for 1 year
+  immutable: true // tells browser the content won't change
+}));
+
+// Serve the rest of the static files (like index.html, main JS bundle, etc.)
 app.use(express.static('client/dist'));
 
 function heartbeat() {
