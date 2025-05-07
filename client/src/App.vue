@@ -2,13 +2,13 @@
   <v-container max-width="100%" min-height="100vh" style="display: grid">
     <v-card class="mx-auto" max-width="100%" height="100%" width="100%" min-height="100%"
       style="display:grid; grid-template-rows: auto auto 1fr;">
-      <div style="display: flex; justify-content: space-between;">
+      <div style="display: flex; justify-content: space-between;  align-items: center;">
 
         <v-card-title class="text-h5">
           Realtime File Sharing
         </v-card-title>
 
-        <v-card-title style="font-size: 1.2rem; font-weight: normal;">
+        <v-card-title style="font-size: 1.2rem; font-weight: normal; ">
           <span  v-if="connected">🟢 Online</span>
           <span v-else>🟡 Connecting<span class="dots"></span></span>
           
