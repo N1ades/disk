@@ -9,6 +9,7 @@ export class WebsocketManager {
             this.ws.close();
             delete this.ws;
         }
+        this.eventListeners["reconect"]?.forEach((listener) => listener());
         console.log('Reconecting websocket');
         this.connect();
     }, 5000 + 2000)
@@ -68,6 +69,7 @@ export class WebsocketManager {
                 return // wait for reconnect
             }
 
+            this.eventListeners["reconect"]?.forEach((listener) => listener());
             this.eventListeners["close"]?.forEach((listener) => listener(event));
 
         });

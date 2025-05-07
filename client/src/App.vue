@@ -2,9 +2,18 @@
   <v-container max-width="100%" min-height="100vh" style="display: grid">
     <v-card class="mx-auto" max-width="100%" height="100%" width="100%" min-height="100%"
       style="display:grid; grid-template-rows: auto auto 1fr;">
-      <v-card-title class="text-h5">
-        Realtime File Sharing
-      </v-card-title>
+      <div style="display: flex; justify-content: space-between;">
+
+        <v-card-title class="text-h5">
+          Realtime File Sharing
+        </v-card-title>
+
+        <v-card-title style="font-size: 1.2rem; font-weight: normal;">
+          <span  v-if="connected">🟢 Online</span>
+          <span v-else>🟡 Connecting<span class="dots"></span></span>
+          
+        </v-card-title>
+      </div>
 
       <v-card-text>
 
@@ -16,7 +25,7 @@
             :style="{ position: 'absolute', width: '100%', top: 0, left: 0, height: '100%', }"></v-progress-linear>
 
 
-          <v-icon :style="{ position: 'relative' }" size="64" color="grey">mdi-cloud-upload-outline</v-icon>
+          <v-icon :style="{ position: 'relative' }" size="64" color="grey">$mdiCloudUploadOutline</v-icon>
           <div :style="{ position: 'relative' }" class="text-body-1 mt-4">
             <span v-if="dropProgress">Reading files metadata {{ `${Math.round(dropProgress * 100)}%` }}</span>
             <span v-else>Drag and drop files here or click to select files</span>
@@ -27,18 +36,19 @@
         </v-sheet>
 
         <div class="d-flex" :style="{ position: 'relative' }">
-          <v-btn class="me-4" prepend-icon="mdi-folder-open" @click="$refs.folderInput.click()">
+          <v-btn class="me-4" prepend-icon="$mdiFolderOpen" @click="$refs.folderInput.click()">
             Select Folder
           </v-btn>
           <input ref="folderInput" type="file" webkitdirectory directory multiple @change="onFolderSelected"
             class="d-none" />
 
-          <v-btn color="error" prepend-icon="mdi-delete" @click="clearFiles" :disabled="files.length === 0">
+          <v-btn color="error" prepend-icon="$mdiDelete" @click="clearFiles" :disabled="files.length === 0">
             Clear All
           </v-btn>
 
-          <v-btn style="margin-left: auto;" prepend-icon="mdi-cast" @click="clearFiles" :disabled="true || !!dropProgress || files.length >= 1">
-            Share Screen And Sound 
+          <v-btn style="margin-left: auto;" prepend-icon="$mdiCast" @click="clearFiles"
+            :disabled="true || !!dropProgress || files.length >= 1">
+            Share Screen And Sound
           </v-btn>
         </div>
       </v-card-text>
@@ -73,12 +83,12 @@
 
                   <div>
                     <v-btn size="small" icon variant="text" :disabled="item.isFolder" @click="copyLink(item)">
-                      <v-icon>mdi-link-variant</v-icon>
+                      <v-icon>$mdiLinkVariant</v-icon>
                       <v-tooltip activator="parent" location="top">Copy Link</v-tooltip>
                     </v-btn>
 
                     <v-btn size="small" icon variant="text" color="error" @click="removeFile(item)">
-                      <v-icon>mdi-close</v-icon>
+                      <v-icon>$mdiClose</v-icon>
                       <v-tooltip activator="parent" location="top">Remove</v-tooltip>
                     </v-btn>
                   </div>
@@ -116,7 +126,8 @@ export default {
       snackbarText: '',
       dropProgress: 0,
       openFoldersMap: new Map(),
-      wakeLockEnabled: false
+      wakeLockEnabled: false,
+      connected: false,
     }
   },
   beforeMount() {
@@ -124,23 +135,39 @@ export default {
     this.transferManager.files = this.files;
     this.transferManager.addEventListener('change', this.filesChanged)
     this.noSleep = new NoSleep();
-    this.backgroundAudioKeeper = new BackgroundAudioKeeper();
+    // this.backgroundAudioKeeper = new BackgroundAudioKeeper();
+
+    let connectionTimeout;
+
+    this.transferManager.ws.addEventListener('open', (status) => {
+
+      connectionTimeout = setTimeout(() => {
+        this.connected = true;
+      }, 1300)
+    })
+    this.transferManager.ws.addEventListener('reconect', (status) => {
+      this.connected = false;
+      clearTimeout(connectionTimeout);
+    })
   },
   beforeUnmount() {
     this.wakeLockSwitch(false);
     this.transferManager.destroy();
-    this.backgroundAudioKeeper.destroy();
+    // this.backgroundAudioKeeper.destroy();
+
+
+
   },
 
   methods: {
-    wakeLockSwitch(enable){
-      if(!this.wakeLockEnabled && enable){
+    wakeLockSwitch(enable) {
+      if (!this.wakeLockEnabled && enable) {
         this.noSleep.enable();
         // this.backgroundAudioKeeper.start();
         console.log('wakeLock enable');
-        
+
       }
-      if(this.wakeLockEnabled && !enable){
+      if (this.wakeLockEnabled && !enable) {
         this.noSleep.disable();
         // this.backgroundAudioKeeper.stop();
         console.log('wakeLock disable');
@@ -222,7 +249,7 @@ export default {
 
     copyLink(item) {
       this.wakeLockSwitch(true);
-      const url = encodeURI(location.protocol + '://' + location.host + '/' +item.link);
+      const url = encodeURI(location.protocol + '://' + location.host + '/' + item.link);
       navigator.clipboard.writeText(url)
         .then(() => {
           this.showSnackbar('Link copied to clipboard')
@@ -245,33 +272,33 @@ export default {
 
     getFileIcon(item) {
       if (item.isFolder) {
-        return 'mdi-folder-open';
+        return '$mdiFolderOpen';
       }
 
       const extension = item.path.split('.').pop().toLowerCase()
 
       const iconMap = {
-        folder: 'mdi-folder-open',
-        pdf: 'mdi-file-pdf-box',
-        doc: 'mdi-file-word',
-        docx: 'mdi-file-word',
-        xls: 'mdi-file-excel',
-        xlsx: 'mdi-file-excel',
-        ppt: 'mdi-file-powerpoint',
-        pptx: 'mdi-file-powerpoint',
-        jpg: 'mdi-file-image',
-        jpeg: 'mdi-file-image',
-        png: 'mdi-file-image',
-        gif: 'mdi-file-gif-box',
-        mp3: 'mdi-file-music',
-        mp4: 'mdi-file-video',
-        zip: 'mdi-zip-box',
-        rar: 'mdi-zip-box',
-        txt: 'mdi-file-document',
-        js: 'mdi-language-javascript',
-        html: 'mdi-language-html5',
-        css: 'mdi-language-css3',
-        json: 'mdi-code-json',
+        folder: '$mdiFolderOpen',
+        pdf: '$mdiFilePdfBox',
+        doc: '$mdiFileWord',
+        docx: '$mdiFileWord',
+        xls: '$mdiFileExcel',
+        xlsx: '$mdiFileExcel',
+        ppt: '$mdiFilePowerpoint',
+        pptx: '$mdiFilePowerpoint',
+        jpg: '$mdiFileImage',
+        jpeg: '$mdiFileImage',
+        png: '$mdiFileImage',
+        gif: '$mdiFileGifBox',
+        mp3: '$mdiFileMusic',
+        mp4: '$mdiFileVideo',
+        zip: '$mdiZipBox',
+        rar: '$mdiZipBox',
+        txt: '$mdiFileDocument',
+        js: '$mdiLanguageJavascript',
+        html: '$mdiLanguageHtml5',
+        css: '$mdiLanguageCss3',
+        json: '$mdiCodeJson',
       }
 
       return iconMap[extension] || 'mdi-file'

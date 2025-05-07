@@ -9,6 +9,8 @@ import { websocketProxyPlugin } from "./src/plugins/vite-plugin-ws-proxy.ts";
 import { defineConfig } from 'vite'
 import { fileURLToPath, URL } from 'node:url'
 
+const PROXY_TARGET = 'localhost:83'
+
 // https://vitejs.dev/config/
 export default defineConfig({
   plugins: [
@@ -23,14 +25,14 @@ export default defineConfig({
         families: [
           {
             name: 'Roboto',
-            weights: [100, 300, 400, 500, 700, 900],
-            styles: ['normal', 'italic'],
+            weights: [400, 500],
+            styles: ['normal'],
           },
         ],
       },
     }),
     websocketProxyPlugin({
-      target: 'ws://localhost:8099', wsPathFilter: (url) => {
+      target: `ws://${PROXY_TARGET}`, wsPathFilter: (url) => {
         return !url.includes('?token=')
       }
     })
@@ -54,12 +56,25 @@ export default defineConfig({
       '.vue',
     ],
   },
-  server: {
-    port: 3000,
+  preview: {
+    allowedHosts: ['disk-dev.owlet.dev'],
+    port: 84,
     proxy: {
       // Match all paths that contain `/someid/files/`
       '^/([^/]+)/files/.*$': {
-        target: 'http://localhost:8099',
+        target: `http://${PROXY_TARGET}`,
+        changeOrigin: true,
+        rewrite: (path) => path,
+      },
+    },
+  },
+  server: {
+    allowedHosts: ['disk-dev.owlet.dev'],
+    port: 84,
+    proxy: {
+      // Match all paths that contain `/someid/files/`
+      '^/([^/]+)/files/.*$': {
+        target: `http://${PROXY_TARGET}`,
         changeOrigin: true,
         rewrite: (path) => path,
       },

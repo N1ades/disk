@@ -1,13 +1,35 @@
 <!DOCTYPE html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8">
-    <link rel="icon" href="/favicon.ico">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🚀 Realtime File Sharing</title>
-  </head>
-  <body>
-    <div id="app"></div>
-    <script type="module" src="/src/main.ts"></script>
-  </body>
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>🚀 Realtime File Sharing</title>
+  <style>
+    .dots {
+      font-family: monospace;
+      display: inline-block;
+      width: 4ch; /* 3 dots + 1 space */
+      white-space: nowrap;
+    }
+
+    .dots::after {
+      content: '.  ';
+      animation: dots 1s steps(3, end) infinite;
+    }
+
+    @keyframes dots {
+      0%   { content: '.  '; }
+      33%  { content: '.. '; }
+      66%  { content: '...'; }
+      100% { content: '.  '; }
+    }
+  </style>
+</head>
+
+<body>
+  <div id="app"></div>
+  <script type="module" src="/src/main.ts"></script>
+</body>
+
 </html>
