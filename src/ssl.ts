@@ -3,6 +3,8 @@ import https from 'https';
 import express from 'express';
 import { WebSocketServer } from 'ws';
 import http from 'http';
+import cors from 'cors';
+import morgan from 'morgan';
 
 export const startSsl = (app) => {
   const SSL_KEY_PATH = process.env.SSL_KEY_PATH;
@@ -73,6 +75,16 @@ export const createServer = () => {
       return wsServers.map(wss => Array.from(wss.clients)).flat(1)
     }
   }
+
+
+  // Use the custom CORS middleware
+  app.use(cors({
+    origin: process.env.ORIGIN ?? true,
+    optionsSuccessStatus: 200 // some legacy browsers (IE11, various SmartTVs) choke on 204
+  }));
+  
+  app.use(morgan(':date :remote-addr - :remote-user [:date[clf]] ":method :url HTTP/:http-version" :status :res[content-length] ":referrer" ":user-agent :res[header] :req[header] :response-time ms"'));
+  
 
   return {
     wss: new WebSocketServers(),

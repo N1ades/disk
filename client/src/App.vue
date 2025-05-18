@@ -46,10 +46,11 @@
             Clear All
           </v-btn>
 
-          <v-btn style="margin-left: auto;" prepend-icon="$mdiCast" @click="clearFiles"
-            :disabled="true || !!dropProgress || files.length >= 1">
-            Share Screen And Sound
-          </v-btn>
+            <a style="margin-left: auto;" href="https://cast.nyades.dev" target="_blank">
+              <v-btn prepend-icon="$mdiCast">
+              Share Screen And Sound
+              </v-btn>
+            </a>
         </div>
       </v-card-text>
 
