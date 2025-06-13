@@ -11,13 +11,13 @@ import { TransferManager } from './transfermanager.ts';
 const { wss, app } = createServer();
 
 
-app.use('/assets', express.static('client/dist/assets', {
+app.use('/assets', express.static('dist/assets', {
   maxAge: '1y', // cache for 1 year
   immutable: true // tells browser the content won't change
 }));
 
 // Serve the rest of the static files (like index.html, main JS bundle, etc.)
-app.use(express.static('client/dist'));
+app.use(express.static('dist'));
 
 function heartbeat() {
   this.isAlive = true;
