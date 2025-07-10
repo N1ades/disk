@@ -250,7 +250,7 @@ export default {
 
     copyLink(item) {
       this.wakeLockSwitch(true);
-      const url = encodeURI(location.protocol + '://' + location.host + '/' + item.link);
+      const url = encodeURI(location.protocol + '//' + location.host + '/' + item.link);
       navigator.clipboard.writeText(url)
         .then(() => {
           this.showSnackbar('Link copied to clipboard')
